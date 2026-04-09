@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="MarkTogether.Client/Client.csproj" />
+  <Project Path="MarkTogether.Server/Server.csproj" />
+  <Project Path="MarkTogether.Shared/Shared.csproj" />
+</Solution>
