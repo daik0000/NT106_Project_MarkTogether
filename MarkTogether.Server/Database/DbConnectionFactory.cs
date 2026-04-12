@@ -12,7 +12,7 @@ namespace MarkTogether.Server.Database
     {
         private static readonly string _connectionString =
             ConfigurationManager.ConnectionStrings["MarkTogetherDb"]?.ConnectionString
-            ?? "Host=localhost;Port=5432;Database=marktogether;Username=postgres;Password=postgres";
+            ?? "Host=localhost;Port=5432;Database=myapp_db;Username=postgres;Password=123";
 
         /// <summary>
         /// Tạo và trả về một NpgsqlConnection mới (chưa Open).
