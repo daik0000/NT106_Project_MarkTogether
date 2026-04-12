@@ -45,10 +45,14 @@
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
+    <Reference Include="Npgsql, Version=4.1.13.0, Culture=neutral, PublicKeyToken=5d8b90d52f46fda7, processorArchitecture=MSIL">
+      <HintPath>..\packages\Npgsql.4.1.13\lib\net472\Npgsql.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
     </Reference>
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
@@ -71,11 +75,24 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Database\DbConnectionFactory.cs" />
+    <Compile Include="Database\Models\ActiveSession.cs" />
+    <Compile Include="Database\Models\Document.cs" />
+    <Compile Include="Database\Models\DocumentOperation.cs" />
+    <Compile Include="Database\Models\DocumentShare.cs" />
+    <Compile Include="Database\Models\DocumentVersion.cs" />
+    <Compile Include="Database\Models\Image.cs" />
+    <Compile Include="Database\Models\User.cs" />
+    <Compile Include="Database\Repositories\DocumentRepository.cs" />
+    <Compile Include="Database\Repositories\DocumentShareRepository.cs" />
+    <Compile Include="Database\Repositories\DocumentVersionRepository.cs" />
+    <Compile Include="Database\Repositories\UserRepository.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="Database\Scripts\schema_init.sql" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
