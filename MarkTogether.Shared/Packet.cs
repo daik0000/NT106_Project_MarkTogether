@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -73,5 +73,13 @@ namespace MarkTogether.Shared
     public class ErrorPayload
     {
         public string Message { get; set; }
+    }
+
+    // Payload riêng cho đăng ký (có thêm Email)
+    public class RegisterPayload
+    {
+        public string Username { get; set; }
+        public string Email { get; set; }
+        public string Password { get; set; }
     }
 }
