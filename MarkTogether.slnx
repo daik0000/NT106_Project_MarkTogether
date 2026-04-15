@@ -1,5 +1,5 @@
 <Solution>
-  <Project Path="MarkTogether.Client/Client.csproj" />
-  <Project Path="MarkTogether.Server/Server.csproj" />
-  <Project Path="MarkTogether.Shared/Shared.csproj" />
+  <Project Path="MarkTogether.Client/Client.csproj" Id="323c1d92-5cfe-4b33-adde-d1047d552e33" />
+  <Project Path="MarkTogether.Server/Server.csproj" Id="40eb2a8e-5627-4204-b341-e4a4d7177051" />
+  <Project Path="MarkTogether.Shared/Shared.csproj" Id="2d1c0b86-2d99-4c01-9eca-def9ed32e4bd" />
 </Solution>
