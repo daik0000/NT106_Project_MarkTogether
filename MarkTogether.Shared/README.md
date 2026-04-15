@@ -1,23 +1,23 @@
 # MarkTogether.Shared
 
-Th? vi?n `MarkTogether.Shared` ch?a model d�ng chung gi?a client/server:
+Thư viện `MarkTogether.Shared` chứa model dùng chung giữa client/server:
 
-- `Packet`: khung g�i tin chung.
-- `MessageType`: lo?i message.
-- C�c `Payload_*`: d? li?u theo t?ng lo?i message.
-- `PacketHelper`: h�m g?i/nh?n qua `NetworkStream`.
+- `Packet`: khung gói tin chung.
+- `MessageType`: loại message.
+- Các `Payload_*`: dữ liệu theo từng loại message.
+- `PacketHelper`: hàm gửi/nhận qua `NetworkStream`.
 
 ---
 
-## 1) C?u tr�c `Packet`
+## 1) Cấu trúc `Packet`
 
-`Packet` c� 3 field ch�nh:
+`Packet` có 3 field chính:
 
-- `Type`: ki?u `MessageType`.
-- `Token`: token phi�n ??ng nh?p (n?u c?n auth).
-- `Payload`: chu?i JSON c?a payload th?c t?.
+- `Type`: kiểu `MessageType`.
+- `Token`: token phiên đăng nhập (nếu cần auth).
+- `Payload`: chuỗi JSON của payload thực tế.
 
-T?o packet nhanh b?ng:
+Tạo packet nhanh bằng:
 
 ```csharp
 var packet = Packet.Create(MessageType.AUTH_LOGIN, new Payload_AUTH_LOGIN
@@ -27,7 +27,7 @@ var packet = Packet.Create(MessageType.AUTH_LOGIN, new Payload_AUTH_LOGIN
 });
 ```
 
-??c payload ? b�n nh?n b?ng:
+Đọc payload ở bên nhận bằng:
 
 ```csharp
 var login = packet.GetPayload<Payload_AUTH_LOGIN>();
@@ -35,27 +35,27 @@ var login = packet.GetPayload<Payload_AUTH_LOGIN>();
 
 ---
 
-## 2) C�ch g?i/nh?n v?i `PacketHelper`
+## 2) Cách gửi/nhận với `PacketHelper`
 
-`PacketHelper` ?ang d�ng protocol:
+`PacketHelper` đang dùng protocol:
 
 1. Serialize `Packet` -> JSON
-2. Prefix 4 bytes ?? d�i
-3. G?i l�n stream
+2. Prefix 4 bytes độ dài
+3. Gửi lên stream
 
-B�n nh?n ??c ?�ng th? t?:
+Bên nhận đọc đúng thứ tự:
 
-1. ??c 4 bytes length
-2. ??c ?�ng `length` bytes data
-3. Deserialize v? `Packet`
+1. Đọc 4 bytes length
+2. Đọc đúng `length` bytes data
+3. Deserialize về `Packet`
 
-### G?i
+### Gửi
 
 ```csharp
 PacketHelper.Send(stream, packet);
 ```
 
-### Nh?n
+### Nhận
 
 ```csharp
 Packet packet = PacketHelper.Receive(stream);
@@ -63,9 +63,9 @@ Packet packet = PacketHelper.Receive(stream);
 
 ---
 
-## 3) V� d? Client -> Server (AUTH_LOGIN)
+## 3) Ví dụ Client -> Server (AUTH_LOGIN)
 
-### Client g?i login
+### Client gửi login
 
 ```csharp
 var req = new Payload_AUTH_LOGIN
@@ -78,7 +78,7 @@ var packet = Packet.Create(MessageType.AUTH_LOGIN, req);
 PacketHelper.Send(stream, packet);
 ```
 
-### Server nh?n v� x? l�
+### Server nhận và xử lý
 
 ```csharp
 Packet incoming = PacketHelper.Receive(stream);
@@ -104,16 +104,16 @@ if (incoming.Type == MessageType.AUTH_LOGIN)
 
 ---
 
-## 4) V� d? OP_INSERT / OP_DELETE batch
+## 4) Ví dụ OP_INSERT / OP_DELETE batch
 
-Theo plan hi?n t?i, `OP_INSERT` v� `OP_DELETE` g?i d?ng batch c�ng lo?i:
+Theo plan hiện tại, `OP_INSERT` và `OP_DELETE` gửi dạng batch cùng loại:
 
 - `docID`
 - `clientResivion`
-- `ops` (t?i ?a 5 ph?n t?)
-- m?i item `ops`: `pos`, `text`, `timestamp`
+- `ops` (tối đa 5 phần tử)
+- mỗi item `ops`: `pos`, `text`, `timestamp`
 
-### Client g?i `OP_INSERT`
+### Client gửi `OP_INSERT`
 
 ```csharp
 var insertPayload = new Payload_OP_INSERT
@@ -130,7 +130,7 @@ var insertPayload = new Payload_OP_INSERT
 PacketHelper.Send(stream, Packet.Create(MessageType.OP_INSERT, insertPayload));
 ```
 
-### Server broadcast l?i `OP_BROADCAST`
+### Server broadcast lại `OP_BROADCAST`
 
 ```csharp
 var broadcast = new Payload_OP_BROADCAST
@@ -148,50 +148,50 @@ PacketHelper.Send(targetClientStream, Packet.Create(MessageType.OP_BROADCAST, br
 
 ---
 
-## 5) C�c helper ti?n �ch hi?n c�
+## 5) Các helper tiện ích hiện có
 
 ### `Packet`
 
 - `Packet.Create(MessageType type, object payload = null)`
-  - T?o packet v� t? serialize payload.
+  - Tạo packet và tự serialize payload.
 - `GetPayload<T>()`
-  - Deserialize `Payload` v? class mong mu?n.
+  - Deserialize `Payload` về class mong muốn.
 
 ### `PacketHelper`
 
 - `Send(NetworkStream stream, Packet packet)`
-  - G?i packet qua stream.
+  - Gửi packet qua stream.
 - `Receive(NetworkStream stream)`
-  - Nh?n packet t? stream.
+  - Nhận packet từ stream.
 
 ---
 
-## 6) Khuy?n ngh? khi d�ng
+## 6) Khuyến nghị khi dùng
 
-- Lu�n parse payload ?�ng theo `MessageType`.
-- V?i `OP_INSERT` / `OP_DELETE`, gi? `ops.Count <= 5` tr??c khi g?i.
-- D�ng `Token` cho c�c request c?n x�c th?c.
-- B?t exception ? t?ng network (`IOException`, m?t k?t n?i, packet l?i JSON).
+- Luôn parse payload đúng theo `MessageType`.
+- Với `OP_INSERT` / `OP_DELETE`, giữ `ops.Count <= 5` trước khi gửi.
+- Dùng `Token` cho các request cần xác thực.
+- Bắt exception ở tầng network (`IOException`, mất kết nối, packet lỗi JSON).
 
 ---
 
-## 7) B?ng t�m t?t c�c lo?i message v� payload
+## 7) Bảng tóm tắt các loại message và payload
 
-| `MessageType` | Payload g?i (class + fields) | Payload nh?n/tr? v? (class + fields) |
+| `MessageType` | Payload gửi (class + fields) | Payload nhận/trả về (class + fields) |
 |---|---|---|
-| `AUTH_REGISTER` | `Payload_AUTH_REGISTER` (`Username`, `Password`) | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) ho?c `Payload_ERROR` (`Message`) |
-| `AUTH_LOGIN` | `Payload_AUTH_LOGIN` (`Username`, `Password`) | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) ho?c `Payload_ERROR` (`Message`) |
+| `AUTH_REGISTER` | `Payload_AUTH_REGISTER` (`Username`, `Password`) | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) hoặc `Payload_ERROR` (`Message`) |
+| `AUTH_LOGIN` | `Payload_AUTH_LOGIN` (`Username`, `Password`) | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) hoặc `Payload_ERROR` (`Message`) |
 | `AUTH_RESPONSE` | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) | `Payload_AUTH_RESPONSE` (`Success`, `Token`, `Message`, `UserId`, `Username`) |
-| `DOC_CREATE` | `Payload_DOC_CREATE_Request` (`title`) | `Payload_DOC_CREATE_Response` (`docID`, `shareCode`, `title`, `content`, `revision`) ho?c `Payload_ERROR` (`Message`) |
-| `DOC_LIST` | `Payload_DOC_LIST_Request` (kh�ng c� field) | `Payload_DOC_LIST_Response` (`documents`: `List<DocInfo>`) ho?c `Payload_ERROR` (`Message`) |
-| `DOC_OPEN` | `Payload_DOC_OPEN_Request` (`docID`) | `Payload_DOC_OPEN_Response` (`docID`, `title`, `content`, `revision`, `permission`) ho?c `Payload_ERROR` (`Message`) |
-| `DOC_JOIN_CODE` | `Payload_DOC_JOIN_CODE_Request` (`shareCode`) | `Payload_DOC_JOIN_CODE_Response` (`docID`, `title`, `content`, `revision`, `permission`, `error`) ho?c `Payload_ERROR` (`Message`) |
-| `DOC_LEAVE` | `Payload_DOC_LEAVE_Request` (`docID`) | `Payload_DOC_LEAVE_Response` (`success`, `message`) ho?c `Payload_ERROR` (`Message`) |
-| `DOC_SHARE` | `Payload_DOC_SHARE_Request` (`docID`, `targetUsername`) | `Payload_DOC_SHARE_Response` (`success`, `message`) ho?c `Payload_ERROR` (`Message`) |
-| `OP_INSERT` | `Payload_OP_INSERT` (`docID`, `clientResivion`, `ops`) v?i `ops` l� `List<EditOpItem>` g?m (`pos`, `text`, `timestamp`) | `Payload_OK` (`Message`) ho?c `Payload_ERROR` (`Message`) |
-| `OP_DELETE` | `Payload_OP_DELETE` (`docID`, `clientResivion`, `ops`) v?i `ops` l� `List<EditOpItem>` g?m (`pos`, `text`, `timestamp`) | `Payload_OK` (`Message`) ho?c `Payload_ERROR` (`Message`) |
-| `OP_BROADCAST` | `Payload_OP_BROADCAST` (`docID`, `clientResivion`, `userID`, `username`, `opType`, `ops`) v?i `ops` l� `List<EditOpItem>` g?m (`pos`, `text`, `timestamp`) | `Payload_OP_BROADCAST` (c�ng c?u tr�c) |
+| `DOC_CREATE` | `Payload_DOC_CREATE_Request` (`title`) | `Payload_DOC_CREATE_Response` (`docID`, `shareCode`, `title`, `content`, `revision`) hoặc `Payload_ERROR` (`Message`) |
+| `DOC_LIST` | `Payload_DOC_LIST_Request` (không có field) | `Payload_DOC_LIST_Response` (`documents`: `List<DocInfo>`) hoặc `Payload_ERROR` (`Message`) |
+| `DOC_OPEN` | `Payload_DOC_OPEN_Request` (`docID`) | `Payload_DOC_OPEN_Response` (`docID`, `title`, `content`, `revision`, `permission`) hoặc `Payload_ERROR` (`Message`) |
+| `DOC_JOIN_CODE` | `Payload_DOC_JOIN_CODE_Request` (`shareCode`) | `Payload_DOC_JOIN_CODE_Response` (`docID`, `title`, `content`, `revision`, `permission`, `error`) hoặc `Payload_ERROR` (`Message`) |
+| `DOC_LEAVE` | `Payload_DOC_LEAVE_Request` (`docID`) | `Payload_DOC_LEAVE_Response` (`success`, `message`) hoặc `Payload_ERROR` (`Message`) |
+| `DOC_SHARE` | `Payload_DOC_SHARE_Request` (`docID`, `targetUsername`) | `Payload_DOC_SHARE_Response` (`success`, `message`) hoặc `Payload_ERROR` (`Message`) |
+| `OP_INSERT` | `Payload_OP_INSERT` (`docID`, `clientResivion`, `ops`) với `ops` là `List<EditOpItem>` gồm (`pos`, `text`, `timestamp`) | `Payload_OK` (`Message`) hoặc `Payload_ERROR` (`Message`) |
+| `OP_DELETE` | `Payload_OP_DELETE` (`docID`, `clientResivion`, `ops`) với `ops` là `List<EditOpItem>` gồm (`pos`, `text`, `timestamp`) | `Payload_OK` (`Message`) hoặc `Payload_ERROR` (`Message`) |
+| `OP_BROADCAST` | `Payload_OP_BROADCAST` (`docID`, `clientResivion`, `userID`, `username`, `opType`, `ops`) với `ops` là `List<EditOpItem>` gồm (`pos`, `text`, `timestamp`) | `Payload_OP_BROADCAST` (cùng cấu trúc) |
 | `ERROR` | `Payload_ERROR` (`Message`) | `Payload_ERROR` (`Message`) |
 | `OK` | `Payload_OK` (`Message`) | `Payload_OK` (`Message`) |
 
-> Ghi ch�: v?i `OP_INSERT`/`OP_DELETE` theo plan m?i, payload ch?a `docID`, `clientResivion`, `ops` (t?i ?a 5 item), m?i item g?m `pos`, `text`, `timestamp`.
+> Ghi chú: với `OP_INSERT`/`OP_DELETE` theo plan mới, payload chứa `docID`, `clientResivion`, `ops` (tối đa 5 item), mỗi item gồm `pos`, `text`, `timestamp`.
