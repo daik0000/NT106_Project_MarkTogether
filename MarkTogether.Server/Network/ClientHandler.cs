@@ -79,7 +79,7 @@ namespace MarkTogether.Server.Network
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Handler] Lỗi: {ex.Message}");
+                Console.WriteLine($"[Handler] Lỗi: {ex}");
             }
             finally
             {

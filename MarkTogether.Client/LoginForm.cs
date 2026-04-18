@@ -46,7 +46,7 @@ namespace MarkTogether.Client
                         MessageBoxIcon.Information);
 
                     this.Hide();
-                    var mainForm = new Form1();
+                    var mainForm = new TypeRenderForm();
                     mainForm.Text = $"MarkTogether - {result.Username}";
                     mainForm.FormClosed += (s, args) =>
                     {
