@@ -214,6 +214,53 @@ namespace MarkTogether.Client.Network
             }
         }
 
+        public void SendInsertOps(string docId, int clientRevision, List<EditOpItem> ops)
+        {
+            EnsureAuthenticated();
+
+            var payload = new Payload_OP_INSERT
+            {
+                docID = docId,
+                clientResivion = clientRevision,
+                ops = ops ?? new List<EditOpItem>()
+            };
+
+            SendRealtimeOpPacket(MessageType.OP_INSERT, payload);
+        }
+
+        public void SendDeleteOps(string docId, int clientRevision, List<EditOpItem> ops)
+        {
+            EnsureAuthenticated();
+
+            var payload = new Payload_OP_DELETE
+            {
+                docID = docId,
+                clientResivion = clientRevision,
+                ops = ops ?? new List<EditOpItem>()
+            };
+
+            SendRealtimeOpPacket(MessageType.OP_DELETE, payload);
+        }
+
+        private void SendRealtimeOpPacket(MessageType type, object payload)
+        {
+            var packet = Packet.Create(type, payload);
+            packet.Token = Token;
+            Send(packet);
+
+            Packet response = Receive();
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? $"Gửi {type} thất bại.");
+            }
+
+            if (response.Type != MessageType.OK)
+            {
+                throw new InvalidOperationException($"Phản hồi không hợp lệ khi gửi {type}: {response.Type}");
+            }
+        }
+
         /// <summary>
         /// Ngắt kết nối.
         /// </summary>

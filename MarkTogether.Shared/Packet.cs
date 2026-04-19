@@ -19,7 +19,7 @@ namespace MarkTogether.Shared
         DOC_CREATE,
         DOC_LIST,
         DOC_OPEN,
-    DOC_SAVE,
+        DOC_SAVE,
         DOC_JOIN_CODE,
         DOC_LEAVE,
         DOC_SHARE,

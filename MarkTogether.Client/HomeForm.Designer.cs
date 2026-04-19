@@ -64,7 +64,7 @@ namespace MarkTogether.Client
             this.btnImportMd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnImportMd.Font = new System.Drawing.Font("Microsoft Sans Serif", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnImportMd.ForeColor = System.Drawing.Color.White;
-            this.btnImportMd.Location = new System.Drawing.Point(1076, 67);
+            this.btnImportMd.Location = new System.Drawing.Point(1296, 67);
             this.btnImportMd.Margin = new System.Windows.Forms.Padding(4);
             this.btnImportMd.Name = "btnImportMd";
             this.btnImportMd.Size = new System.Drawing.Size(230, 55);
@@ -83,7 +83,7 @@ namespace MarkTogether.Client
             "Old to New",
             "A to Z",
             "Z to A"});
-            this.cmbSortMode.Location = new System.Drawing.Point(572, 81);
+            this.cmbSortMode.Location = new System.Drawing.Point(792, 81);
             this.cmbSortMode.Margin = new System.Windows.Forms.Padding(4);
             this.cmbSortMode.Name = "cmbSortMode";
             this.cmbSortMode.Size = new System.Drawing.Size(249, 33);
@@ -94,7 +94,7 @@ namespace MarkTogether.Client
             // 
             this.lblSort.AutoSize = true;
             this.lblSort.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
-            this.lblSort.Location = new System.Drawing.Point(512, 81);
+            this.lblSort.Location = new System.Drawing.Point(732, 81);
             this.lblSort.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.lblSort.Name = "lblSort";
             this.lblSort.Size = new System.Drawing.Size(52, 28);
@@ -108,7 +108,7 @@ namespace MarkTogether.Client
             this.btnCreateDocument.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnCreateDocument.Font = new System.Drawing.Font("Microsoft Sans Serif", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnCreateDocument.ForeColor = System.Drawing.Color.White;
-            this.btnCreateDocument.Location = new System.Drawing.Point(1350, 67);
+            this.btnCreateDocument.Location = new System.Drawing.Point(1570, 67);
             this.btnCreateDocument.Margin = new System.Windows.Forms.Padding(4);
             this.btnCreateDocument.Name = "btnCreateDocument";
             this.btnCreateDocument.Size = new System.Drawing.Size(154, 55);

@@ -72,6 +72,14 @@ namespace MarkTogether.Server.Network
                             HandleDocSave(packet);
                             break;
 
+                        case MessageType.OP_INSERT:
+                            HandleOpInsert(packet);
+                            break;
+
+                        case MessageType.OP_DELETE:
+                            HandleOpDelete(packet);
+                            break;
+
                         // ═══════════════════════════════════════
                         // TODO: Thêm các case khác ở đây sau này:
                         // case MessageType.DOC_CREATE:
@@ -338,6 +346,112 @@ namespace MarkTogether.Server.Network
             }
 
             return _userId;
+        }
+
+        private void HandleOpInsert(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            var payload = packet.GetPayload<Payload_OP_INSERT>();
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
+            {
+                SendError("docID không hợp lệ.");
+                return;
+            }
+
+            int charCount = (payload.ops ?? new List<EditOpItem>())
+                .Sum(op => op?.text?.Length ?? 0);
+
+            if (charCount > 5)
+            {
+                SendError("OP_INSERT chỉ được chứa tối đa 5 ký tự trong một gói.");
+                return;
+            }
+
+            Console.WriteLine(
+                "[Handler] OP_INSERT received\n" +
+                $"  user={currentUserId}\n" +
+                $"  docID={payload.docID}\n" +
+                $"  clientRevision={payload.clientResivion}\n" +
+                $"  totalChars={charCount}\n" +
+                $"  opsCount={payload.ops?.Count ?? 0}\n" +
+                $"{BuildOpsDebug(payload.ops)}");
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
+            {
+                Message = "OP_INSERT received"
+            }));
+        }
+
+        private void HandleOpDelete(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            var payload = packet.GetPayload<Payload_OP_DELETE>();
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
+            {
+                SendError("docID không hợp lệ.");
+                return;
+            }
+
+            int charCount = (payload.ops ?? new List<EditOpItem>())
+                .Sum(op => op?.text?.Length ?? 0);
+
+            if (charCount > 5)
+            {
+                SendError("OP_DELETE chỉ được chứa tối đa 5 ký tự trong một gói.");
+                return;
+            }
+
+            Console.WriteLine(
+                "[Handler] OP_DELETE received\n" +
+                $"  user={currentUserId}\n" +
+                $"  docID={payload.docID}\n" +
+                $"  clientRevision={payload.clientResivion}\n" +
+                $"  totalChars={charCount}\n" +
+                $"  opsCount={payload.ops?.Count ?? 0}\n" +
+                $"{BuildOpsDebug(payload.ops)}");
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
+            {
+                Message = "OP_DELETE received"
+            }));
+        }
+
+        private string BuildOpsDebug(List<EditOpItem> ops)
+        {
+            if (ops == null || ops.Count == 0)
+            {
+                return "  ops=[]";
+            }
+
+            var lines = ops.Select((op, i) =>
+            {
+                if (op == null)
+                {
+                    return $"  op[{i}] = <null>";
+                }
+
+                string safeText = (op.text ?? string.Empty)
+                    .Replace("\\", "\\\\")
+                    .Replace("\r", "\\r")
+                    .Replace("\n", "\\n")
+                    .Replace("\t", "\\t");
+
+                return $"  op[{i}] pos={op.pos}, len={safeText.Length}, text=\"{safeText}\", ts={op.timestamp:O}";
+            });
+
+            return string.Join(Environment.NewLine, lines);
         }
 
         // ═══════════════════════════════════════════

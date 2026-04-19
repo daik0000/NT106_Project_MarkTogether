@@ -12,7 +12,7 @@ namespace MarkTogether.Shared
         // Gửi: serialize packet → prefix 4-byte length → write stream
         public static void Send(NetworkStream stream, Packet packet)
         {
-            string json = JsonConvert.SerializeObject(packet);
+                string json = JsonConvert.SerializeObject(packet);
             byte[] data = Encoding.UTF8.GetBytes(json);
             byte[] lenBytes = BitConverter.GetBytes(data.Length);
 
