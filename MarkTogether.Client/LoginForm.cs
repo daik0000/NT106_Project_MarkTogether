@@ -39,21 +39,20 @@ namespace MarkTogether.Client
 
                 if (result.Success)
                 {
-                    // Thành công → mở MainForm
+                    // Thành công → mở HomeForm
                     MessageBox.Show($"Chào mừng {result.Username}!",
                         "Đăng nhập thành công",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
 
                     this.Hide();
-                    var mainForm = new TypeRenderForm();
-                    mainForm.Text = $"MarkTogether - {result.Username}";
-                    mainForm.FormClosed += (s, args) =>
+                    var homeForm = new HomeForm();
+                    homeForm.FormClosed += (s, args) =>
                     {
                         SocketClient.Instance.Disconnect();
                         this.Close();
                     };
-                    mainForm.Show();
+                    homeForm.Show();
                 }
                 else
                 {

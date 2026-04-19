@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MarkTogether.Client.Network;
 using Markdig;
 
 namespace MarkTogether.Client
@@ -14,7 +15,10 @@ namespace MarkTogether.Client
         private string _pendingHtmlBody = string.Empty;
         private bool _isPreviewUpdating;
         private bool _hasPendingPreviewUpdate;
-    private int _renderRequestVersion;
+        private int _renderRequestVersion;
+        private readonly string _docId;
+        private readonly string _docTitle;
+        private readonly string _initialContent;
 
         private const string PreviewHtmlTemplate = "<!DOCTYPE html>" +
                                                    "<html><head><meta charset='utf-8'/>" +
@@ -51,6 +55,11 @@ namespace MarkTogether.Client
                                                    "</head><body></body></html>";
 
         public TypeRenderForm()
+            : this(null, null, null)
+        {
+        }
+
+        public TypeRenderForm(string docId, string title, string initialContent)
         {
             InitializeComponent();
 
@@ -68,6 +77,26 @@ namespace MarkTogether.Client
 
             Shown += TypeRenderForm_Shown;
 
+            _docId = docId;
+            _docTitle = title;
+            _initialContent = initialContent;
+
+            ApplyInitialDocumentState();
+
+            RenderMarkdown();
+        }
+
+        private void ApplyInitialDocumentState()
+        {
+            if (!string.IsNullOrWhiteSpace(_docId))
+            {
+                Text = string.IsNullOrWhiteSpace(_docTitle)
+                    ? "MarkTogether - Tài liệu"
+                    : $"MarkTogether - {_docTitle}";
+                txtRawMarkdown.Text = _initialContent ?? string.Empty;
+                return;
+            }
+
             txtRawMarkdown.Text =
                 "# MarkTogether\r\n\r\n" +
                 "Chào mừng bạn đến với **Type Render**.\r\n\r\n" +
@@ -76,8 +105,6 @@ namespace MarkTogether.Client
                 "```csharp\r\n" +
                 "Console.WriteLine(\"Hello Markdown!\");\r\n" +
                 "```";
-
-            RenderMarkdown();
         }
 
         private async void TypeRenderForm_Shown(object sender, EventArgs e)
@@ -201,6 +228,27 @@ namespace MarkTogether.Client
             }
             Shown -= TypeRenderForm_Shown;
             base.OnFormClosed(e);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (!string.IsNullOrWhiteSpace(_docId) && SocketClient.Instance.IsLoggedIn)
+            {
+                try
+                {
+                    string latestContent = txtRawMarkdown.Text ?? string.Empty;
+                    SocketClient.Instance.SaveDocument(_docId, latestContent);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Không thể tự động lưu tài liệu khi đóng.\n\nChi tiết: {ex.Message}",
+                        "Lỗi lưu tài liệu",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+            }
+
+            base.OnFormClosing(e);
         }
     }
 }

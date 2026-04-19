@@ -19,6 +19,7 @@ namespace MarkTogether.Shared
         DOC_CREATE,
         DOC_LIST,
         DOC_OPEN,
+    DOC_SAVE,
         DOC_JOIN_CODE,
         DOC_LEAVE,
         DOC_SHARE,
@@ -85,11 +86,12 @@ namespace MarkTogether.Shared
     public class Payload_DOC_CREATE_Request
     {
         public string title { get; set; }
+        public string content { get; set; }
     }
 
     public class Payload_DOC_CREATE_Response
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public string shareCode { get; set; }
         public string title { get; set; }
         public string content { get; set; } = "";
@@ -109,16 +111,23 @@ namespace MarkTogether.Shared
     // DOC_OPEN
     public class Payload_DOC_OPEN_Request
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
     }
 
     public class Payload_DOC_OPEN_Response
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public string title { get; set; }
         public string content { get; set; }
         public int revision { get; set; }
         public string permission { get; set; }
+    }
+
+    // DOC_SAVE
+    public class Payload_DOC_SAVE_Request
+    {
+        public string docID { get; set; }
+        public string content { get; set; }
     }
 
     // DOC_JOIN_CODE
@@ -129,7 +138,7 @@ namespace MarkTogether.Shared
 
     public class Payload_DOC_JOIN_CODE_Response
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public string title { get; set; }
         public string content { get; set; }
         public int revision { get; set; }
@@ -140,7 +149,7 @@ namespace MarkTogether.Shared
     // DOC_LEAVE
     public class Payload_DOC_LEAVE_Request
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
     }
 
     public class Payload_DOC_LEAVE_Response
@@ -152,7 +161,7 @@ namespace MarkTogether.Shared
     // DOC_SHARE
     public class Payload_DOC_SHARE_Request
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public string targetUsername { get; set; }
     }
 
@@ -167,7 +176,7 @@ namespace MarkTogether.Shared
     // OP_INSERT (batch cùng loại, tối đa 5 ops)
     public class Payload_OP_INSERT
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public int clientResivion { get; set; }
         public List<EditOpItem> ops { get; set; } = new List<EditOpItem>();
     }
@@ -175,7 +184,7 @@ namespace MarkTogether.Shared
     // OP_DELETE (batch cùng loại, tối đa 5 ops)
     public class Payload_OP_DELETE
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public int clientResivion { get; set; }
         public List<EditOpItem> ops { get; set; } = new List<EditOpItem>();
     }
@@ -183,7 +192,7 @@ namespace MarkTogether.Shared
     // OP_BROADCAST
     public class Payload_OP_BROADCAST
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
         public int clientResivion { get; set; }
         public int userID { get; set; }
         public string username { get; set; }
@@ -212,7 +221,7 @@ namespace MarkTogether.Shared
 
     public class DocInfo
     {
-        public int docID { get; set; }
+        public string docID { get; set; }
 
         public string title { get; set; }
 

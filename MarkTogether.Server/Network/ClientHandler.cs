@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
+using MarkTogether.Server.Database.Models;
+using MarkTogether.Server.Database.Repositories;
 using MarkTogether.Server.Services;
 using MarkTogether.Shared;
 
@@ -50,6 +54,22 @@ namespace MarkTogether.Server.Network
 
                         case MessageType.AUTH_LOGIN:
                             HandleLogin(packet);
+                            break;
+
+                        case MessageType.DOC_LIST:
+                            HandleDocList(packet);
+                            break;
+
+                        case MessageType.DOC_CREATE:
+                            HandleDocCreate(packet);
+                            break;
+
+                        case MessageType.DOC_OPEN:
+                            HandleDocOpen(packet);
+                            break;
+
+                        case MessageType.DOC_SAVE:
+                            HandleDocSave(packet);
                             break;
 
                         // ═══════════════════════════════════════
@@ -150,6 +170,174 @@ namespace MarkTogether.Server.Network
             // 4. Trả kết quả
             var responsePacket = Packet.Create(MessageType.AUTH_RESPONSE, response);
             PacketHelper.Send(_stream, responsePacket);
+        }
+
+        private void HandleDocList(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            Console.WriteLine($"[Handler] Nhận yêu cầu DOC_LIST từ user ID={currentUserId}...");
+
+            var docs = DocumentRepository.GetByUserId(currentUserId);
+            var response = new Payload_DOC_LIST_Response
+            {
+                documents = docs.Select(d => new DocInfo
+                {
+                    docID = d.Id,
+                    title = d.Title,
+                    permission = d.OwnerId == currentUserId ? "owner" : "viewer",
+                    updateAt = d.UpdatedAt
+                }).ToList()
+            };
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_LIST, response));
+        }
+
+        private void HandleDocCreate(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            var payload = packet.GetPayload<Payload_DOC_CREATE_Request>();
+            string title = (payload?.title ?? string.Empty).Trim();
+            string initialContent = payload?.content ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                title = "Tài liệu không tiêu đề";
+            }
+
+            Console.WriteLine($"[Handler] Nhận yêu cầu DOC_CREATE từ user ID={currentUserId}, title='{title}'...");
+
+            var document = new Document
+            {
+                OwnerId = currentUserId,
+                Title = title,
+                Content = initialContent
+            };
+
+            string docId = DocumentRepository.Create(document);
+            var createdDoc = DocumentRepository.GetById(docId);
+
+            var response = new Payload_DOC_CREATE_Response
+            {
+                docID = docId,
+                title = createdDoc?.Title ?? title,
+                content = createdDoc?.Content ?? string.Empty,
+                revision = DocumentRepository.GetCurrentRevision(docId),
+                shareCode = null
+            };
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_CREATE, response));
+        }
+
+        private void HandleDocOpen(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            var payload = packet.GetPayload<Payload_DOC_OPEN_Request>();
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
+            {
+                SendError("docID không hợp lệ.");
+                return;
+            }
+
+            string docId = payload.docID.Trim();
+            Console.WriteLine($"[Handler] Nhận yêu cầu DOC_OPEN từ user ID={currentUserId}, docID={docId}...");
+
+            var document = DocumentRepository.GetById(docId);
+            if (document == null)
+            {
+                SendError("Không tìm thấy tài liệu.");
+                return;
+            }
+
+            if (document.OwnerId != currentUserId)
+            {
+                SendError("Bạn không có quyền truy cập tài liệu này.");
+                return;
+            }
+
+            var response = new Payload_DOC_OPEN_Response
+            {
+                docID = document.Id,
+                title = document.Title,
+                content = document.Content ?? string.Empty,
+                revision = DocumentRepository.GetCurrentRevision(docId),
+                permission = "owner"
+            };
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_OPEN, response));
+        }
+
+        private void HandleDocSave(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0)
+            {
+                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                return;
+            }
+
+            var payload = packet.GetPayload<Payload_DOC_SAVE_Request>();
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
+            {
+                SendError("docID không hợp lệ.");
+                return;
+            }
+
+            string docId = payload.docID.Trim();
+            var document = DocumentRepository.GetById(docId);
+            if (document == null)
+            {
+                SendError("Không tìm thấy tài liệu.");
+                return;
+            }
+
+            if (document.OwnerId != currentUserId)
+            {
+                SendError("Bạn không có quyền lưu tài liệu này.");
+                return;
+            }
+
+            bool updated = DocumentRepository.UpdateContent(docId, payload.content ?? string.Empty);
+            if (!updated)
+            {
+                SendError("Lưu tài liệu thất bại.");
+                return;
+            }
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
+            {
+                Message = "Lưu tài liệu thành công"
+            }));
+        }
+
+        private int ResolveCurrentUserId(Packet packet)
+        {
+            if (!string.IsNullOrWhiteSpace(packet?.Token))
+            {
+                int tokenUserId = SessionManager.GetUserId(packet.Token);
+                if (tokenUserId > 0)
+                {
+                    return tokenUserId;
+                }
+            }
+
+            return _userId;
         }
 
         // ═══════════════════════════════════════════
