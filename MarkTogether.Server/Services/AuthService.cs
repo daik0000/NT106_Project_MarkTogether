@@ -14,26 +14,26 @@ namespace MarkTogether.Server.Services
         /// <summary>
         /// Xử lý đăng ký tài khoản mới.
         /// </summary>
-        public static AuthResponse Register(string username, string email, string password)
+    public static Payload_AUTH_RESPONSE Register(string username, string email, string password)
         {
             // 1. Validate input
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-                return new AuthResponse { Success = false, Message = "Username và password không được để trống" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Username và password không được để trống" };
 
             if (password.Length < 6)
-                return new AuthResponse { Success = false, Message = "Mật khẩu phải có ít nhất 6 ký tự" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Mật khẩu phải có ít nhất 6 ký tự" };
 
             // 2. Kiểm tra username đã tồn tại chưa
             var existingUser = UserRepository.GetByUsername(username);
             if (existingUser != null)
-                return new AuthResponse { Success = false, Message = "Username đã được sử dụng" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Username đã được sử dụng" };
 
             // 3. Kiểm tra email đã tồn tại chưa (nếu có nhập email)
             if (!string.IsNullOrEmpty(email))
             {
                 var existingEmail = UserRepository.GetByEmail(email);
                 if (existingEmail != null)
-                    return new AuthResponse { Success = false, Message = "Email đã được sử dụng" };
+                    return new Payload_AUTH_RESPONSE { Success = false, Message = "Email đã được sử dụng" };
             }
 
             // 4. Hash password bằng BCrypt (cost factor = 12)
@@ -53,7 +53,7 @@ namespace MarkTogether.Server.Services
 
             Console.WriteLine($"[Auth] Đăng ký thành công: {username} (ID={userId})");
 
-            return new AuthResponse
+            return new Payload_AUTH_RESPONSE
             {
                 Success = true,
                 Message = "Đăng ký thành công",
@@ -66,28 +66,28 @@ namespace MarkTogether.Server.Services
         /// <summary>
         /// Xử lý đăng nhập.
         /// </summary>
-        public static AuthResponse Login(string username, string password)
+    public static Payload_AUTH_RESPONSE Login(string username, string password)
         {
             // 1. Validate input
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-                return new AuthResponse { Success = false, Message = "Username và password không được để trống" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Username và password không được để trống" };
 
             // 2. Tìm user theo username
             var user = UserRepository.GetByUsername(username);
             if (user == null)
-                return new AuthResponse { Success = false, Message = "Username không tồn tại" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Username không tồn tại" };
 
             // 3. So khớp password
             bool isMatch = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
             if (!isMatch)
-                return new AuthResponse { Success = false, Message = "Mật khẩu không đúng" };
+                return new Payload_AUTH_RESPONSE { Success = false, Message = "Mật khẩu không đúng" };
 
             // 4. Tạo token
             string token = GenerateToken();
 
             Console.WriteLine($"[Auth] Đăng nhập thành công: {username} (ID={user.Id})");
 
-            return new AuthResponse
+            return new Payload_AUTH_RESPONSE
             {
                 Success = true,
                 Message = "Đăng nhập thành công",

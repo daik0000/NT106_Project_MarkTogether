@@ -35,7 +35,7 @@ namespace MarkTogether.Client
                 SocketClient.Instance.Connect("localhost", 5000);
 
                 // Gửi yêu cầu đăng nhập
-                AuthResponse result = SocketClient.Instance.Login(username, password);
+                Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
 
                 if (result.Success)
                 {

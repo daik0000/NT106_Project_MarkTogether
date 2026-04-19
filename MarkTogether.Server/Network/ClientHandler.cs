@@ -102,10 +102,10 @@ namespace MarkTogether.Server.Network
             Console.WriteLine("[Handler] Nhận yêu cầu ĐĂNG KÝ...");
 
             // 1. Parse payload từ client
-            var payload = packet.GetPayload<RegisterPayload>();
+            var payload = packet.GetPayload<Payload_AUTH_REGISTER>();
 
             // 2. Gọi AuthService xử lý logic
-            AuthResponse response = AuthService.Register(
+            Payload_AUTH_RESPONSE response = AuthService.Register(
                 payload.Username, payload.Email, payload.Password
             );
 
@@ -131,10 +131,10 @@ namespace MarkTogether.Server.Network
             Console.WriteLine("[Handler] Nhận yêu cầu ĐĂNG NHẬP...");
 
             // 1. Parse payload
-            var payload = packet.GetPayload<AuthPayload>();
+            var payload = packet.GetPayload<Payload_AUTH_LOGIN>();
 
             // 2. Gọi AuthService
-            AuthResponse response = AuthService.Login(
+            Payload_AUTH_RESPONSE response = AuthService.Login(
                 payload.Username, payload.Password
             );
 
@@ -157,7 +157,7 @@ namespace MarkTogether.Server.Network
         // ═══════════════════════════════════════════
         private void SendError(string message)
         {
-            var errorPacket = Packet.Create(MessageType.ERROR, new ErrorPayload { Message = message });
+            var errorPacket = Packet.Create(MessageType.ERROR, new Payload_ERROR { Message = message });
             PacketHelper.Send(_stream, errorPacket);
         }
     }

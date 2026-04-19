@@ -53,16 +53,16 @@ namespace MarkTogether.Client.Network
         }
 
         /// <summary>
-        /// Đăng nhập. Trả AuthResponse.
+        /// Đăng nhập. Trả Payload_AUTH_RESPONSE.
         /// </summary>
-        public AuthResponse Login(string username, string password)
+        public Payload_AUTH_RESPONSE Login(string username, string password)
         {
             var packet = Packet.Create(MessageType.AUTH_LOGIN,
-                new AuthPayload { Username = username, Password = password });
+                new Payload_AUTH_LOGIN { Username = username, Password = password });
             Send(packet);
 
             Packet response = Receive();
-            var authResp = response.GetPayload<AuthResponse>();
+            var authResp = response.GetPayload<Payload_AUTH_RESPONSE>();
 
             if (authResp.Success)
             {
@@ -75,12 +75,12 @@ namespace MarkTogether.Client.Network
         }
 
         /// <summary>
-        /// Đăng ký. Trả AuthResponse.
+        /// Đăng ký. Trả Payload_AUTH_RESPONSE.
         /// </summary>
-        public AuthResponse Register(string username, string email, string password)
+        public Payload_AUTH_RESPONSE Register(string username, string email, string password)
         {
             var packet = Packet.Create(MessageType.AUTH_REGISTER,
-                new RegisterPayload
+                new Payload_AUTH_REGISTER
                 {
                     Username = username,
                     Email = email,
@@ -89,7 +89,7 @@ namespace MarkTogether.Client.Network
             Send(packet);
 
             Packet response = Receive();
-            var authResp = response.GetPayload<AuthResponse>();
+            var authResp = response.GetPayload<Payload_AUTH_RESPONSE>();
 
             if (authResp.Success)
             {
