@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,6 +19,10 @@ namespace MarkTogether.Shared
         DOC_CREATE,
         DOC_LIST,
         DOC_OPEN,
+<<<<<<< HEAD
+=======
+        DOC_SAVE,
+>>>>>>> origin/features/type_and_render
         DOC_JOIN_CODE,
         DOC_LEAVE,
         DOC_SHARE,
@@ -85,11 +89,19 @@ namespace MarkTogether.Shared
     public class Payload_DOC_CREATE_Request
     {
         public string title { get; set; }
+<<<<<<< HEAD
+=======
+        public string content { get; set; }
+>>>>>>> origin/features/type_and_render
     }
 
     public class Payload_DOC_CREATE_Response
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public string shareCode { get; set; }
         public string title { get; set; }
         public string content { get; set; } = "";
@@ -109,18 +121,36 @@ namespace MarkTogether.Shared
     // DOC_OPEN
     public class Payload_DOC_OPEN_Request
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
     }
 
     public class Payload_DOC_OPEN_Response
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public string title { get; set; }
         public string content { get; set; }
         public int revision { get; set; }
         public string permission { get; set; }
     }
 
+<<<<<<< HEAD
+=======
+    // DOC_SAVE
+    public class Payload_DOC_SAVE_Request
+    {
+        public string docID { get; set; }
+        public string content { get; set; }
+    }
+
+>>>>>>> origin/features/type_and_render
     // DOC_JOIN_CODE
     public class Payload_DOC_JOIN_CODE_Request
     {
@@ -129,7 +159,11 @@ namespace MarkTogether.Shared
 
     public class Payload_DOC_JOIN_CODE_Response
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public string title { get; set; }
         public string content { get; set; }
         public int revision { get; set; }
@@ -140,7 +174,11 @@ namespace MarkTogether.Shared
     // DOC_LEAVE
     public class Payload_DOC_LEAVE_Request
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
     }
 
     public class Payload_DOC_LEAVE_Response
@@ -152,7 +190,11 @@ namespace MarkTogether.Shared
     // DOC_SHARE
     public class Payload_DOC_SHARE_Request
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public string targetUsername { get; set; }
     }
 
@@ -167,7 +209,11 @@ namespace MarkTogether.Shared
     // OP_INSERT (batch cùng loại, tối đa 5 ops)
     public class Payload_OP_INSERT
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public int clientResivion { get; set; }
         public List<EditOpItem> ops { get; set; } = new List<EditOpItem>();
     }
@@ -175,7 +221,11 @@ namespace MarkTogether.Shared
     // OP_DELETE (batch cùng loại, tối đa 5 ops)
     public class Payload_OP_DELETE
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public int clientResivion { get; set; }
         public List<EditOpItem> ops { get; set; } = new List<EditOpItem>();
     }
@@ -183,7 +233,11 @@ namespace MarkTogether.Shared
     // OP_BROADCAST
     public class Payload_OP_BROADCAST
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
         public int clientResivion { get; set; }
         public int userID { get; set; }
         public string username { get; set; }
@@ -212,7 +266,11 @@ namespace MarkTogether.Shared
 
     public class DocInfo
     {
+<<<<<<< HEAD
         public int docID { get; set; }
+=======
+        public string docID { get; set; }
+>>>>>>> origin/features/type_and_render
 
         public string title { get; set; }
 
