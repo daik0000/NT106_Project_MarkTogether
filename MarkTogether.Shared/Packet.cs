@@ -78,6 +78,7 @@ namespace MarkTogether.Shared
     // Payload riêng cho đăng ký (có thêm Email)
     public class RegisterPayload
     {
+    
         public string Username { get; set; }
         public string Email { get; set; }
         public string Password { get; set; }

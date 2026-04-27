@@ -80,6 +80,7 @@ namespace MarkTogether.Server.Network
             catch (Exception ex)
             {
                 Console.WriteLine($"[Handler] Lỗi: {ex.Message}");
+                Console.WriteLine($"[Handler] Chi tiết lỗi: {ex.GetType().Name}: {ex}");
             }
             finally
             {
@@ -105,9 +106,19 @@ namespace MarkTogether.Server.Network
             var payload = packet.GetPayload<RegisterPayload>();
 
             // 2. Gọi AuthService xử lý logic
-            AuthResponse response = AuthService.Register(
-                payload.Username, payload.Email, payload.Password
-            );
+            AuthResponse response;
+            try
+            {
+                response = AuthService.Register(
+                    payload.Username, payload.Email, payload.Password
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Handler] Chi tiết lỗi: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"[Handler] StackTrace: {ex.InnerException?.Message}");
+                response = new AuthResponse { Success = false, Message = "Lỗi server: " + ex.Message };
+            }
 
             // 3. Nếu thành công → lưu session
             if (response.Success)
