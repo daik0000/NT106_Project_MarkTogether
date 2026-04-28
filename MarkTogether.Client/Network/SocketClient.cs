@@ -14,6 +14,7 @@ namespace MarkTogether.Client.Network
         private TcpClient _tcp;
         private NetworkStream _stream;
         private bool _connected;
+        private readonly object _requestSync = new object();
 
         // Singleton instance
         public static SocketClient Instance { get; } = new SocketClient();
@@ -60,9 +61,7 @@ namespace MarkTogether.Client.Network
         {
             var packet = Packet.Create(MessageType.AUTH_LOGIN,
                 new Payload_AUTH_LOGIN { Username = username, Password = password });
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             var authResp = response.GetPayload<Payload_AUTH_RESPONSE>();
 
             if (authResp.Success)
@@ -87,9 +86,7 @@ namespace MarkTogether.Client.Network
                     Email = email,
                     Password = password
                 });
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             var authResp = response.GetPayload<Payload_AUTH_RESPONSE>();
 
             if (authResp.Success)
@@ -108,9 +105,7 @@ namespace MarkTogether.Client.Network
 
             var packet = Packet.Create(MessageType.DOC_LIST, new Payload_DOC_LIST_Request());
             packet.Token = Token;
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();
@@ -147,9 +142,7 @@ namespace MarkTogether.Client.Network
                     content = content
                 });
             packet.Token = Token;
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();
@@ -171,9 +164,7 @@ namespace MarkTogether.Client.Network
             var packet = Packet.Create(MessageType.DOC_OPEN,
                 new Payload_DOC_OPEN_Request { docID = docId });
             packet.Token = Token;
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();
@@ -199,9 +190,7 @@ namespace MarkTogether.Client.Network
                     content = content ?? string.Empty
                 });
             packet.Token = Token;
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();
@@ -246,9 +235,7 @@ namespace MarkTogether.Client.Network
         {
             var packet = Packet.Create(type, payload);
             packet.Token = Token;
-            Send(packet);
-
-            Packet response = Receive();
+            Packet response = SendAndReceive(packet);
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();
@@ -270,6 +257,15 @@ namespace MarkTogether.Client.Network
             Token = null;
             _stream?.Close();
             _tcp?.Close();
+        }
+
+        private Packet SendAndReceive(Packet packet)
+        {
+            lock (_requestSync)
+            {
+                Send(packet);
+                return Receive();
+            }
         }
 
         private void EnsureAuthenticated()

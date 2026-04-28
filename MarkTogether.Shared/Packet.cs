@@ -4,49 +4,40 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace MarkTogether.Shared
 {
-    // Enum tất cả loại message trong hệ thống
     public enum MessageType
     {
-        // Auth
-        AUTH_REGISTER,
-        AUTH_LOGIN,
-        AUTH_RESPONSE,
-
-        // Document
-        DOC_CREATE,
-        DOC_LIST,
-        DOC_OPEN,
-        DOC_SAVE,
-        DOC_JOIN_CODE,
-        DOC_LEAVE,
-        DOC_SHARE,
-        // DOC_UPLOAD_PIC,
-
-        // Real-time edit 
-        OP_INSERT,
-        OP_DELETE,
-        OP_BROADCAST,
-
-        // System
-        ERROR,
-        OK
+        AUTH_REGISTER = 0,
+        AUTH_LOGIN = 1,
+        AUTH_RESPONSE = 2,
+        DOC_CREATE = 3,
+        DOC_LIST = 4,
+        DOC_OPEN = 5,
+        DOC_SAVE = 6,
+        DOC_JOIN_CODE = 7,
+        DOC_LEAVE = 8,
+        DOC_SHARE = 9,
+        OP_INSERT = 10,
+        OP_DELETE = 11,
+        OP_BROADCAST = 12,
+        ERROR = 13,
+        OK = 14
     }
 
-    // Packet chính — mọi message đều dùng class này
     public class Packet
     {
+        [JsonConverter(typeof(StringEnumConverter))]
         public MessageType Type { get; set; }
-        public string Token { get; set; }     // session token sau khi login
-        public string Payload { get; set; }   // JSON string của data cụ thể
 
-        // Helper: deserialize Payload thành object cụ thể
+        public string Token { get; set; }
+        public string Payload { get; set; }
+
         public T GetPayload<T>() =>
             JsonConvert.DeserializeObject<T>(Payload);
 
-        // Helper: tạo packet nhanh
         public static Packet Create(MessageType type, object payload = null)
             => new Packet
             {

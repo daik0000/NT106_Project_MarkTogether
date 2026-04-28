@@ -45,58 +45,66 @@ namespace MarkTogether.Server.Network
                     // 1. Đọc packet từ client
                     Packet packet = PacketHelper.Receive(_stream);
 
-                    // 2. Dispatch theo MessageType
-                    switch (packet.Type)
+                    try
                     {
-                        case MessageType.AUTH_REGISTER:
-                            HandleRegister(packet);
-                            break;
-
-                        case MessageType.AUTH_LOGIN:
-                            HandleLogin(packet);
-                            break;
-
-                        case MessageType.DOC_LIST:
-                            HandleDocList(packet);
-                            break;
-
-                        case MessageType.DOC_CREATE:
-                            HandleDocCreate(packet);
-                            break;
-
-                        case MessageType.DOC_OPEN:
-                            HandleDocOpen(packet);
-                            break;
-
-                        case MessageType.DOC_SAVE:
-                            HandleDocSave(packet);
-                            break;
-
-                        case MessageType.OP_INSERT:
-                            HandleOpInsert(packet);
-                            break;
-
-                        case MessageType.OP_DELETE:
-                            HandleOpDelete(packet);
-                            break;
-
-                        // ═══════════════════════════════════════
-                        // TODO: Thêm các case khác ở đây sau này:
-                        // case MessageType.DOC_CREATE:
-                        // case MessageType.DOC_JOIN:
-                        // case MessageType.OP_INSERT:
-                        // case MessageType.OP_DELETE:
-                        // ═══════════════════════════════════════
-
-                        default:
-                            // Nếu chưa login → từ chối
-                            if (_userId < 0)
-                            {
-                                SendError("Bạn chưa đăng nhập. Vui lòng login trước.");
+                        // 2. Dispatch theo MessageType
+                        switch (packet.Type)
+                        {
+                            case MessageType.AUTH_REGISTER:
+                                HandleRegister(packet);
                                 break;
-                            }
-                            SendError($"MessageType '{packet.Type}' chưa được hỗ trợ.");
-                            break;
+
+                            case MessageType.AUTH_LOGIN:
+                                HandleLogin(packet);
+                                break;
+
+                            case MessageType.DOC_LIST:
+                                HandleDocList(packet);
+                                break;
+
+                            case MessageType.DOC_CREATE:
+                                HandleDocCreate(packet);
+                                break;
+
+                            case MessageType.DOC_OPEN:
+                                HandleDocOpen(packet);
+                                break;
+
+                            case MessageType.DOC_SAVE:
+                                HandleDocSave(packet);
+                                break;
+
+                            case MessageType.OP_INSERT:
+                                HandleOpInsert(packet);
+                                break;
+
+                            case MessageType.OP_DELETE:
+                                HandleOpDelete(packet);
+                                break;
+
+                            // ═══════════════════════════════════════
+                            // TODO: Thêm các case khác ở đây sau này:
+                            // case MessageType.DOC_CREATE:
+                            // case MessageType.DOC_JOIN:
+                            // case MessageType.OP_INSERT:
+                            // case MessageType.OP_DELETE:
+                            // ═══════════════════════════════════════
+
+                            default:
+                                // Nếu chưa login → từ chối
+                                if (_userId < 0)
+                                {
+                                    SendError("Bạn chưa đăng nhập. Vui lòng login trước.");
+                                    break;
+                                }
+                                SendError($"MessageType '{packet.Type}' chưa được hỗ trợ.");
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Handler] Lỗi xử lý packet {packet?.Type}: {ex}");
+                        SendError("Đã xảy ra lỗi khi xử lý yêu cầu.");
                     }
                 }
             }
@@ -182,28 +190,36 @@ namespace MarkTogether.Server.Network
 
         private void HandleDocList(Packet packet)
         {
-            int currentUserId = ResolveCurrentUserId(packet);
-            if (currentUserId < 0)
+            try
             {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
-                return;
-            }
-
-            Console.WriteLine($"[Handler] Nhận yêu cầu DOC_LIST từ user ID={currentUserId}...");
-
-            var docs = DocumentRepository.GetByUserId(currentUserId);
-            var response = new Payload_DOC_LIST_Response
-            {
-                documents = docs.Select(d => new DocInfo
+                int currentUserId = ResolveCurrentUserId(packet);
+                if (currentUserId < 0)
                 {
-                    docID = d.Id,
-                    title = d.Title,
-                    permission = d.OwnerId == currentUserId ? "owner" : "viewer",
-                    updateAt = d.UpdatedAt
-                }).ToList()
-            };
+                    SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                    return;
+                }
 
-            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_LIST, response));
+                Console.WriteLine($"[Handler] Nhận yêu cầu DOC_LIST từ user ID={currentUserId}...");
+
+                var docs = DocumentRepository.GetByUserId(currentUserId);
+                var response = new Payload_DOC_LIST_Response
+                {
+                    documents = docs.Select(d => new DocInfo
+                    {
+                        docID = d.Id,
+                        title = d.Title,
+                        permission = d.OwnerId == currentUserId ? "owner" : "viewer",
+                        updateAt = d.UpdatedAt
+                    }).ToList()
+                };
+
+                PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_LIST, response));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Handler] DOC_LIST error: {ex}");
+                SendError("Không thể tải danh sách tài liệu vào lúc này.");
+            }
         }
 
         private void HandleDocCreate(Packet packet)
