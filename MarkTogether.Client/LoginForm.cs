@@ -35,25 +35,24 @@ namespace MarkTogether.Client
                 SocketClient.Instance.Connect("localhost", 5000);
 
                 // Gửi yêu cầu đăng nhập
-                AuthResponse result = SocketClient.Instance.Login(username, password);
+                Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
 
                 if (result.Success)
                 {
-                    // Thành công → mở MainForm
+                    // Thành công → mở HomeForm
                     MessageBox.Show($"Chào mừng {result.Username}!",
                         "Đăng nhập thành công",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
 
                     this.Hide();
-                    var mainForm = new Form1();
-                    mainForm.Text = $"MarkTogether - {result.Username}";
-                    mainForm.FormClosed += (s, args) =>
+                    var homeForm = new HomeForm();
+                    homeForm.FormClosed += (s, args) =>
                     {
                         SocketClient.Instance.Disconnect();
                         this.Close();
                     };
-                    mainForm.Show();
+                    homeForm.Show();
                 }
                 else
                 {
