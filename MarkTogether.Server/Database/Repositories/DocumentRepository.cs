@@ -21,12 +21,13 @@ namespace MarkTogether.Server.Database.Repositories
             {
                 db.Open();
                 return db.ExecuteScalar<string>(
-                    @"INSERT INTO documents (owner_id, title, content, file_path_server)
-                      VALUES (@OwnerId, @Title, @Content, @FilePathServer)
+                    @"INSERT INTO documents (owner_id, share_code, title, content, file_path_server)
+                      VALUES (@OwnerId, @ShareCode, @Title, @Content, @FilePathServer)
                       RETURNING id",
                     new
                     {
                         doc.OwnerId,
+                        doc.ShareCode,
                         doc.Title,
                         doc.Content,
                         doc.FilePathServer
@@ -45,6 +46,33 @@ namespace MarkTogether.Server.Database.Repositories
                 return db.QueryFirstOrDefault<Document>(
                     "SELECT * FROM documents WHERE id = @Id",
                     new { Id = docId });
+            }
+        }
+
+        // [ADDED] Lấy document theo ShareCode
+        public static Document GetByShareCode(string shareCode)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.QueryFirstOrDefault<Document>(
+                    "SELECT * FROM documents WHERE share_code = @Code",
+                    new { Code = shareCode });
+            }
+        }
+
+        // [ADDED] Cập nhật ShareCode cho document
+        public static bool UpdateShareCode(string docId, string shareCode)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE documents
+                      SET share_code = @Code, updated_at = NOW()
+                      WHERE id = @Id",
+                    new { Code = shareCode, Id = docId });
+                return affected > 0;
             }
         }
 

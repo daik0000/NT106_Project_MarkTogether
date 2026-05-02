@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
 using Markdig;
+using System.Linq; // [ADDED]
 
 namespace MarkTogether.Client
 {
@@ -115,7 +116,76 @@ namespace MarkTogether.Client
             _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
             _trackRealtimeOps = !string.IsNullOrWhiteSpace(_docId);
 
+            // [ADDED] Register broadcast event
+            if (!string.IsNullOrEmpty(_docId))
+            {
+                SocketClient.Instance.BroadcastReceived += OnBroadcastReceived;
+            }
+
             RenderMarkdown();
+        }
+
+        // [ADDED] Handle broadcast from other users
+        private void OnBroadcastReceived(MarkTogether.Shared.Payload_OP_BROADCAST broadcast)
+        {
+            if (broadcast == null || broadcast.docID != _docId)
+                return;
+
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(() => OnBroadcastReceived(broadcast)));
+                return;
+            }
+
+            try
+            {
+                // Disable event to prevent infinite loops
+                txtRawMarkdown.TextChanged -= txtRawMarkdown_TextChanged;
+
+                int savedCursor = txtRawMarkdown.SelectionStart;
+                string currentText = txtRawMarkdown.Text ?? string.Empty;
+
+                // Sort ops by position descending if deleting to avoid shifting issues? 
+                // Or just apply sequentially as instructed.
+                var ops = broadcast.ops ?? new List<MarkTogether.Shared.EditOpItem>();
+
+                foreach (var op in ops)
+                {
+                    if (broadcast.opType == "insert")
+                    {
+                        if (op.pos >= 0 && op.pos <= currentText.Length)
+                        {
+                            currentText = currentText.Insert(op.pos, op.text);
+                            if (op.pos <= savedCursor)
+                                savedCursor += op.text.Length;
+                        }
+                    }
+                    else if (broadcast.opType == "delete")
+                    {
+                        if (op.pos >= 0 && op.pos < currentText.Length)
+                        {
+                            int lenToRemove = Math.Min(op.text.Length, currentText.Length - op.pos);
+                            currentText = currentText.Remove(op.pos, lenToRemove);
+                            if (op.pos < savedCursor)
+                                savedCursor -= Math.Min(lenToRemove, savedCursor - op.pos);
+                        }
+                    }
+                }
+
+                txtRawMarkdown.Text = currentText;
+                txtRawMarkdown.SelectionStart = Math.Max(0, Math.Min(savedCursor, currentText.Length));
+                _lastMarkdownText = currentText;
+                _clientRevision++; // As requested
+
+                // Trigger render
+                _renderRequestVersion++;
+                _renderDebounceTimer.Stop();
+                _renderDebounceTimer.Start();
+            }
+            finally
+            {
+                txtRawMarkdown.TextChanged += txtRawMarkdown_TextChanged;
+            }
         }
 
         private void ApplyInitialDocumentState()
@@ -476,6 +546,12 @@ namespace MarkTogether.Client
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            // [ADDED] Unregister broadcast event
+            if (!string.IsNullOrEmpty(_docId))
+            {
+                SocketClient.Instance.BroadcastReceived -= OnBroadcastReceived;
+            }
+
             _opFlushTimer.Tick -= OpFlushTimer_Tick;
             _opFlushTimer.Dispose();
 
@@ -499,6 +575,9 @@ namespace MarkTogether.Client
                 {
                     string latestContent = txtRawMarkdown.Text ?? string.Empty;
                     SocketClient.Instance.SaveDocument(_docId, latestContent);
+
+                    // [ADDED] Send DOC_LEAVE
+                    SocketClient.Instance.LeaveDocument(_docId);
                 }
                 catch (Exception ex)
                 {

@@ -23,13 +23,23 @@ namespace MarkTogether.Server.Network
         private int _userId = -1;   // UserId sau khi xác thực
         private string _username;   // Username sau khi xác thực
 
+        // [ADDED] Track current document for broadcasting
+        private string _currentDocId;
+
         public int UserId => _userId;
         public string Username => _username;
+        public string CurrentDocId => _currentDocId;
 
         public ClientHandler(TcpClient tcpClient)
         {
             _tcpClient = tcpClient;
             _stream = tcpClient.GetStream();
+        }
+
+        // [ADDED] Expose method to send packet
+        public void SendPacket(Packet packet)
+        {
+            PacketHelper.Send(_stream, packet);
         }
 
         /// <summary>
@@ -44,6 +54,7 @@ namespace MarkTogether.Server.Network
                 {
                     // 1. Đọc packet từ client
                     Packet packet = PacketHelper.Receive(_stream);
+                    if (packet == null) continue;
 
                     try
                     {
@@ -74,6 +85,18 @@ namespace MarkTogether.Server.Network
                                 HandleDocSave(packet);
                                 break;
 
+                            case MessageType.DOC_LEAVE:
+                                HandleDocLeave(packet);
+                                break;
+
+                            case MessageType.DOC_SHARE:
+                                HandleDocShare(packet);
+                                break;
+
+                            case MessageType.DOC_JOIN_CODE:
+                                HandleDocJoinCode(packet);
+                                break;
+
                             case MessageType.OP_INSERT:
                                 HandleOpInsert(packet);
                                 break;
@@ -81,14 +104,6 @@ namespace MarkTogether.Server.Network
                             case MessageType.OP_DELETE:
                                 HandleOpDelete(packet);
                                 break;
-
-                            // ═══════════════════════════════════════
-                            // TODO: Thêm các case khác ở đây sau này:
-                            // case MessageType.DOC_CREATE:
-                            // case MessageType.DOC_JOIN:
-                            // case MessageType.OP_INSERT:
-                            // case MessageType.OP_DELETE:
-                            // ═══════════════════════════════════════
 
                             default:
                                 // Nếu chưa login → từ chối
@@ -208,7 +223,7 @@ namespace MarkTogether.Server.Network
                     {
                         docID = d.Id,
                         title = d.Title,
-                        permission = d.OwnerId == currentUserId ? "owner" : "viewer",
+                        permission = DocumentShareRepository.GetPermission(d.Id, currentUserId) ?? "viewer",
                         updateAt = d.UpdatedAt
                     }).ToList()
                 };
@@ -241,9 +256,13 @@ namespace MarkTogether.Server.Network
 
             Console.WriteLine($"[Handler] Nhận yêu cầu DOC_CREATE từ user ID={currentUserId}, title='{title}'...");
 
+            // [MODIFIED] Random share code
+            string shareCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+
             var document = new Document
             {
                 OwnerId = currentUserId,
+                ShareCode = shareCode,
                 Title = title,
                 Content = initialContent
             };
@@ -257,7 +276,7 @@ namespace MarkTogether.Server.Network
                 title = createdDoc?.Title ?? title,
                 content = createdDoc?.Content ?? string.Empty,
                 revision = DocumentRepository.GetCurrentRevision(docId),
-                shareCode = null
+                shareCode = shareCode
             };
 
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_CREATE, response));
@@ -289,11 +308,15 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            if (document.OwnerId != currentUserId)
+            string permission = DocumentShareRepository.GetPermission(docId, currentUserId);
+            if (permission == null)
             {
                 SendError("Bạn không có quyền truy cập tài liệu này.");
                 return;
             }
+
+            // [ADDED] Track current doc
+            _currentDocId = docId;
 
             var response = new Payload_DOC_OPEN_Response
             {
@@ -301,7 +324,7 @@ namespace MarkTogether.Server.Network
                 title = document.Title,
                 content = document.Content ?? string.Empty,
                 revision = DocumentRepository.GetCurrentRevision(docId),
-                permission = "owner"
+                permission = permission
             };
 
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_OPEN, response));
@@ -331,7 +354,8 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            if (document.OwnerId != currentUserId)
+            string permission = DocumentShareRepository.GetPermission(docId, currentUserId);
+            if (permission != "owner" && permission != "editor")
             {
                 SendError("Bạn không có quyền lưu tài liệu này.");
                 return;
@@ -348,6 +372,80 @@ namespace MarkTogether.Server.Network
             {
                 Message = "Lưu tài liệu thành công"
             }));
+        }
+
+        // [ADDED] Handle DOC_LEAVE
+        private void HandleDocLeave(Packet packet)
+        {
+            Console.WriteLine($"[Handler] User {_username} (ID={_userId}) left document {_currentDocId}.");
+            _currentDocId = null;
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Left document" }));
+        }
+
+        // [ADDED] Handle DOC_SHARE
+        private void HandleDocShare(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_SHARE_Request>();
+            if (payload == null || string.IsNullOrEmpty(payload.docID) || string.IsNullOrEmpty(payload.targetUsername))
+            {
+                SendError("Dữ liệu chia sẻ không hợp lệ.");
+                return;
+            }
+
+            var doc = DocumentRepository.GetById(payload.docID);
+            if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
+            if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền chia sẻ."); return; }
+
+            // [BUG 2 FIX] Generate share_code if missing
+            if (string.IsNullOrEmpty(doc.ShareCode))
+            {
+                doc.ShareCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+                DocumentRepository.UpdateShareCode(doc.Id, doc.ShareCode);
+            }
+
+            var targetUser = UserRepository.GetByUsername(payload.targetUsername);
+            if (targetUser == null) { SendError("Người dùng không tồn tại."); return; }
+
+            // [VERIFIED] Data is saved to DocumentShareRepository
+            DocumentShareRepository.ShareDocument(payload.docID, targetUser.Id, "editor");
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = $"Đã chia sẻ cho {payload.targetUsername}" }));
+        }
+
+        // [ADDED] Handle DOC_JOIN_CODE
+        private void HandleDocJoinCode(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_JOIN_CODE_Request>();
+            if (payload == null || string.IsNullOrEmpty(payload.shareCode))
+            {
+                SendError("Mã chia sẻ không hợp lệ.");
+                return;
+            }
+
+            // [MODIFIED] Find by share code
+            var doc = DocumentRepository.GetByShareCode(payload.shareCode);
+            if (doc == null) { SendError("Mã chia sẻ không hợp lệ."); return; }
+
+            // [BY DESIGN] Any user with a valid share code can join as viewer without explicit owner approval.
+            string permission = DocumentShareRepository.GetPermission(doc.Id, currentUserId);
+            if (permission == null)
+            {
+                // [VERIFIED] Data is saved to DocumentShareRepository when joining
+                DocumentShareRepository.ShareDocument(doc.Id, currentUserId, "viewer");
+                permission = "viewer";
+            }
+
+            var response = new Payload_DOC_JOIN_CODE_Response
+            {
+                docID = doc.Id,
+                title = doc.Title,
+                content = doc.Content ?? string.Empty,
+                revision = DocumentRepository.GetCurrentRevision(doc.Id),
+                permission = permission
+            };
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_JOIN_CODE, response));
         }
 
         private int ResolveCurrentUserId(Packet packet)
@@ -398,6 +496,18 @@ namespace MarkTogether.Server.Network
                 $"  opsCount={payload.ops?.Count ?? 0}\n" +
                 $"{BuildOpsDebug(payload.ops)}");
 
+            // [ADDED] Broadcast OP_BROADCAST to others
+            var broadcast = new Payload_OP_BROADCAST
+            {
+                docID = payload.docID,
+                clientResivion = payload.clientResivion,
+                userID = currentUserId,
+                username = _username,
+                opType = "insert",
+                ops = payload.ops
+            };
+            SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcast));
+
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
             {
                 Message = "OP_INSERT received"
@@ -437,6 +547,18 @@ namespace MarkTogether.Server.Network
                 $"  totalChars={charCount}\n" +
                 $"  opsCount={payload.ops?.Count ?? 0}\n" +
                 $"{BuildOpsDebug(payload.ops)}");
+
+            // [ADDED] Broadcast OP_BROADCAST to others
+            var broadcast = new Payload_OP_BROADCAST
+            {
+                docID = payload.docID,
+                clientResivion = payload.clientResivion,
+                userID = currentUserId,
+                username = _username,
+                opType = "delete",
+                ops = payload.ops
+            };
+            SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcast));
 
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
             {

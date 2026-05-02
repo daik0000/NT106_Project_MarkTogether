@@ -29,6 +29,8 @@ namespace MarkTogether.Client
         private void InitializeComponent()
         {
             this.pnlTop = new System.Windows.Forms.Panel();
+            this.btnJoinCode = new System.Windows.Forms.Button();
+            this.btnShare = new System.Windows.Forms.Button();
             this.btnImportMd = new System.Windows.Forms.Button();
             this.cmbSortMode = new System.Windows.Forms.ComboBox();
             this.lblSort = new System.Windows.Forms.Label();
@@ -45,6 +47,8 @@ namespace MarkTogether.Client
             // pnlTop
             // 
             this.pnlTop.BackColor = System.Drawing.Color.White;
+            this.pnlTop.Controls.Add(this.btnShare);
+            this.pnlTop.Controls.Add(this.btnJoinCode);
             this.pnlTop.Controls.Add(this.btnImportMd);
             this.pnlTop.Controls.Add(this.cmbSortMode);
             this.pnlTop.Controls.Add(this.lblSort);
@@ -209,6 +213,8 @@ namespace MarkTogether.Client
     private System.Windows.Forms.Button btnImportMd;
     private System.Windows.Forms.ComboBox cmbSortMode;
     private System.Windows.Forms.Label lblSort;
+    private System.Windows.Forms.Button btnJoinCode;
+    private System.Windows.Forms.Button btnShare;
         private System.Windows.Forms.ListView listDocuments;
         private System.Windows.Forms.ColumnHeader colTitle;
         private System.Windows.Forms.ColumnHeader colUpdatedAt;

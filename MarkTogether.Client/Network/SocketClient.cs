@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Threading;
 using MarkTogether.Shared;
 
 namespace MarkTogether.Client.Network
@@ -16,6 +18,10 @@ namespace MarkTogether.Client.Network
         private bool _connected;
         private readonly object _requestSync = new object();
 
+        // [ADDED] Background listener and response queue
+        private readonly BlockingCollection<Packet> _responseQueue = new BlockingCollection<Packet>();
+        private Thread _listenerThread;
+
         // Singleton instance
         public static SocketClient Instance { get; } = new SocketClient();
 
@@ -24,6 +30,9 @@ namespace MarkTogether.Client.Network
         public int UserId { get; set; }
         public string Username { get; set; }
         public bool IsLoggedIn => !string.IsNullOrEmpty(Token);
+
+        // [ADDED] Event for server broadcast
+        public event Action<Payload_OP_BROADCAST> BroadcastReceived;
 
         /// <summary>
         /// Kết nối đến server.
@@ -36,6 +45,48 @@ namespace MarkTogether.Client.Network
             _tcp.Connect(host, port);
             _stream = _tcp.GetStream();
             _connected = true;
+
+            // [ADDED] Start background listener thread
+            StartListenerThread();
+        }
+
+        // [ADDED] Listener thread implementation
+        private void StartListenerThread()
+        {
+            _listenerThread = new Thread(() =>
+            {
+                while (_connected)
+                {
+                    try
+                    {
+                        Packet packet = PacketHelper.Receive(_stream);
+                        if (packet == null) continue;
+
+                        if (packet.Type == MessageType.OP_BROADCAST)
+                        {
+                            var payload = packet.GetPayload<Payload_OP_BROADCAST>();
+                            BroadcastReceived?.Invoke(payload);
+                        }
+                        else
+                        {
+                            _responseQueue.Add(packet);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // IOException is expected when stream is closed in Disconnect()
+                        if (_connected)
+                        {
+                            _connected = false;
+                        }
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "SocketClientListener"
+            };
+            _listenerThread.Start();
         }
 
         /// <summary>
@@ -51,7 +102,8 @@ namespace MarkTogether.Client.Network
         /// </summary>
         public Packet Receive()
         {
-            return PacketHelper.Receive(_stream);
+            // [MODIFIED] Use queue instead of direct receive
+            return _responseQueue.Take();
         }
 
         /// <summary>
@@ -203,6 +255,59 @@ namespace MarkTogether.Client.Network
             }
         }
 
+        // [ADDED] Leave document
+        public void LeaveDocument(string docId)
+        {
+            if (string.IsNullOrEmpty(Token)) return;
+
+            var packet = Packet.Create(MessageType.DOC_LEAVE,
+                new Payload_DOC_LEAVE_Request { docID = docId });
+            packet.Token = Token;
+            try
+            {
+                SendAndReceive(packet);
+            }
+            catch { /* Ignore errors on leave */ }
+        }
+
+        // [ADDED] Share document
+        public void ShareDocument(string docId, string targetUsername)
+        {
+            EnsureAuthenticated();
+
+            var packet = Packet.Create(MessageType.DOC_SHARE,
+                new Payload_DOC_SHARE_Request
+                {
+                    docID = docId,
+                    targetUsername = targetUsername
+                });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Không thể chia sẻ tài liệu.");
+            }
+        }
+
+        // [ADDED] Join by code
+        public Payload_DOC_JOIN_CODE_Response JoinByCode(string shareCode)
+        {
+            EnsureAuthenticated();
+
+            var packet = Packet.Create(MessageType.DOC_JOIN_CODE,
+                new Payload_DOC_JOIN_CODE_Request { shareCode = shareCode });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Mã chia sẻ không hợp lệ.");
+            }
+
+            return response.GetPayload<Payload_DOC_JOIN_CODE_Response>();
+        }
+
         public void SendInsertOps(string docId, int clientRevision, List<EditOpItem> ops)
         {
             EnsureAuthenticated();
@@ -253,10 +358,26 @@ namespace MarkTogether.Client.Network
         /// </summary>
         public void Disconnect()
         {
+            // [VERIFIED] Listener thread is properly stopped by setting _connected to false 
+            // and closing the stream which triggers an exception in PacketHelper.Receive.
             _connected = false;
             Token = null;
-            _stream?.Close();
-            _tcp?.Close();
+
+            try
+            {
+                _stream?.Close();
+                _tcp?.Close();
+            }
+            catch { /* Ignore close errors */ }
+
+            if (_listenerThread != null && _listenerThread.IsAlive)
+            {
+                // Give it a moment to exit
+                _listenerThread.Join(500);
+            }
+
+            // [ADDED] Clear response queue
+            while (_responseQueue.Count > 0) _responseQueue.TryTake(out _);
         }
 
         private Packet SendAndReceive(Packet packet)

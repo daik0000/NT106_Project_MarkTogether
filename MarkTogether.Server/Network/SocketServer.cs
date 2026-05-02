@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using MarkTogether.Shared;
 
 namespace MarkTogether.Server.Network
 {
@@ -14,6 +17,10 @@ namespace MarkTogether.Server.Network
         private TcpListener _listener;
         private readonly int _port;
         private bool _running;
+
+        // [ADDED] Track active client handlers
+        private static readonly List<ClientHandler> _activeHandlers = new List<ClientHandler>();
+        private static readonly object _handlersLock = new object();
 
         public SocketServer(int port = 5000)
         {
@@ -42,7 +49,27 @@ namespace MarkTogether.Server.Network
 
                     // Tạo handler riêng cho client này, xử lý song song
                     var handler = new ClientHandler(tcpClient);
-                    Task.Run(() => handler.ProcessAsync());
+                    
+                    // [ADDED] Register handler
+                    lock (_handlersLock)
+                    {
+                        _activeHandlers.Add(handler);
+                    }
+
+                    Task.Run(() => {
+                        try
+                        {
+                            handler.ProcessAsync();
+                        }
+                        finally
+                        {
+                            // [ADDED] Unregister handler when done
+                            lock (_handlersLock)
+                            {
+                                _activeHandlers.Remove(handler);
+                            }
+                        }
+                    });
                 }
                 catch (ObjectDisposedException)
                 {
@@ -52,6 +79,30 @@ namespace MarkTogether.Server.Network
                 {
                     if (_running)
                         Console.WriteLine($"[Server] Lỗi accept: {ex.Message}");
+                }
+            }
+        }
+
+        // [ADDED] Broadcast to other clients opening the same document
+        public static void BroadcastToOthers(string docId, int senderUserId, Packet broadcastPacket)
+        {
+            List<ClientHandler> targets;
+            lock (_handlersLock)
+            {
+                targets = _activeHandlers
+                    .Where(h => h.CurrentDocId == docId && h.UserId != senderUserId)
+                    .ToList();
+            }
+
+            foreach (var handler in targets)
+            {
+                try
+                {
+                    handler.SendPacket(broadcastPacket);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Server] Broadcast error to user {handler.UserId}: {ex.Message}");
                 }
             }
         }

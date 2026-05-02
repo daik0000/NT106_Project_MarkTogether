@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
 using MarkTogether.Shared;
+using Microsoft.VisualBasic; // [ADDED] For InputBox
 
 namespace MarkTogether.Client
 {
@@ -36,6 +37,10 @@ namespace MarkTogether.Client
             ApplyRoundedButtonStyle(btnCreateDocument, Color.DodgerBlue, Color.RoyalBlue, 12);
             ApplyRoundedButtonStyle(btnImportMd, Color.FromArgb(155, 89, 182), Color.FromArgb(142, 68, 173), 12);
 
+            // [ADDED] Style new buttons
+            ApplyRoundedButtonStyle(btnJoinCode, Color.FromArgb(46, 204, 113), Color.FromArgb(39, 174, 96), 12);
+            ApplyRoundedButtonStyle(btnShare, Color.FromArgb(230, 126, 34), Color.FromArgb(211, 84, 0), 12);
+
             Resize += HomeForm_Resize;
             Shown += HomeForm_Shown;
         }
@@ -44,6 +49,9 @@ namespace MarkTogether.Client
         {
             ApplyButtonRoundedRegion(btnCreateDocument, 12);
             ApplyButtonRoundedRegion(btnImportMd, 12);
+            // [ADDED]
+            ApplyButtonRoundedRegion(btnJoinCode, 12);
+            ApplyButtonRoundedRegion(btnShare, 12);
         }
 
         private async void HomeForm_Shown(object sender, EventArgs e)
@@ -206,6 +214,62 @@ namespace MarkTogether.Client
             }
         }
 
+        // [ADDED] Join by code click
+        private async void btnJoinCode_Click(object sender, EventArgs e)
+        {
+            string shareCode = Interaction.InputBox("Nhập mã chia sẻ:", "Tham gia tài liệu", "");
+            if (string.IsNullOrWhiteSpace(shareCode)) return;
+
+            try
+            {
+                ToggleLoadingState(true);
+                var response = await Task.Run(() => SocketClient.Instance.JoinByCode(shareCode));
+                
+                // Reload list and open editor
+                await LoadDocumentsAsync();
+                OpenDocumentEditor(response.docID, response.title, response.content);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi tham gia tài liệu: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ToggleLoadingState(false);
+            }
+        }
+
+        // [ADDED] Share document click
+        private async void btnShare_Click(object sender, EventArgs e)
+        {
+            if (listDocuments.SelectedItems.Count == 0)
+            {
+                MessageBox.Show("Vui lòng chọn tài liệu muốn chia sẻ.", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedDoc = listDocuments.SelectedItems[0].Tag as DocInfo;
+            if (selectedDoc == null) return;
+
+            string targetUsername = Interaction.InputBox("Nhập username người muốn chia sẻ:", "Chia sẻ tài liệu", "");
+            if (string.IsNullOrWhiteSpace(targetUsername)) return;
+
+            try
+            {
+                ToggleLoadingState(true);
+                await Task.Run(() => SocketClient.Instance.ShareDocument(selectedDoc.docID, targetUsername));
+                MessageBox.Show($"Đã chia sẻ tài liệu cho {targetUsername}!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi chia sẻ: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ToggleLoadingState(false);
+            }
+        }
+
         private void cmbSortMode_SelectedIndexChanged(object sender, EventArgs e)
         {
             ApplySortAndBind();
@@ -274,6 +338,8 @@ namespace MarkTogether.Client
         {
             btnCreateDocument.Enabled = !isLoading;
             btnImportMd.Enabled = !isLoading;
+            btnJoinCode.Enabled = !isLoading; // [ADDED]
+            btnShare.Enabled = !isLoading;    // [ADDED]
             cmbSortMode.Enabled = !isLoading;
             listDocuments.Enabled = !isLoading;
         }

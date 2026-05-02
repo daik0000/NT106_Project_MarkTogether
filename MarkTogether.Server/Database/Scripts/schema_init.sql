@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS documents (
     id              VARCHAR(50) PRIMARY KEY DEFAULT 'doc_' || gen_random_uuid()::text,
     owner_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_code      VARCHAR(20) UNIQUE,
     title           VARCHAR(500) NOT NULL DEFAULT 'Tài liệu không tiêu đề',
     content         TEXT DEFAULT '',
     file_path_server TEXT,
