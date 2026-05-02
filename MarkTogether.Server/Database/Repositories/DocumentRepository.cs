@@ -5,6 +5,9 @@ using System.Linq;
 using Dapper;
 using MarkTogether.Server.Database.Models;
 
+// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
+// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS public_permission VARCHAR(10) DEFAULT 'viewer';
+
 namespace MarkTogether.Server.Database.Repositories
 {
     /// <summary>
@@ -21,8 +24,8 @@ namespace MarkTogether.Server.Database.Repositories
             {
                 db.Open();
                 return db.ExecuteScalar<string>(
-                    @"INSERT INTO documents (owner_id, share_code, title, content, file_path_server)
-                      VALUES (@OwnerId, @ShareCode, @Title, @Content, @FilePathServer)
+                    @"INSERT INTO documents (owner_id, share_code, title, content, file_path_server, is_public, public_permission)
+                      VALUES (@OwnerId, @ShareCode, @Title, @Content, @FilePathServer, @IsPublic, @PublicPermission)
                       RETURNING id",
                     new
                     {
@@ -30,7 +33,9 @@ namespace MarkTogether.Server.Database.Repositories
                         doc.ShareCode,
                         doc.Title,
                         doc.Content,
-                        doc.FilePathServer
+                        doc.FilePathServer,
+                        doc.IsPublic,
+                        doc.PublicPermission
                     });
             }
         }
@@ -72,6 +77,21 @@ namespace MarkTogether.Server.Database.Repositories
                       SET share_code = @Code, updated_at = NOW()
                       WHERE id = @Id",
                     new { Code = shareCode, Id = docId });
+                return affected > 0;
+            }
+        }
+
+        // [ADDED] Cập nhật chế độ public của document
+        public static bool UpdatePublicSettings(string docId, bool isPublic, string publicPermission)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE documents
+                      SET is_public = @IsPublic, public_permission = @PublicPermission, updated_at = NOW()
+                      WHERE id = @Id",
+                    new { IsPublic = isPublic, PublicPermission = publicPermission, Id = docId });
                 return affected > 0;
             }
         }

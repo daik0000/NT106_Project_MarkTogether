@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS documents (
     id              VARCHAR(50) PRIMARY KEY DEFAULT 'doc_' || gen_random_uuid()::text,
     owner_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     share_code      VARCHAR(20) UNIQUE,
+    is_public       BOOLEAN DEFAULT FALSE,
+    public_permission VARCHAR(10) DEFAULT 'viewer',
     title           VARCHAR(500) NOT NULL DEFAULT 'Tài liệu không tiêu đề',
     content         TEXT DEFAULT '',
     file_path_server TEXT,
@@ -50,8 +52,8 @@ CREATE TABLE IF NOT EXISTS document_operations (
     applied_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Index cho việc query operations theo revision
-CREATE INDEX IF NOT EXISTS idx_doc_ops_revision
+-- Index cho việc query operations theo revision (quan trọng cho OT Engine)
+CREATE INDEX IF NOT EXISTS idx_doc_ops_doc_revision
     ON document_operations(doc_id, revision);
 
 -- 5. Bảng Document Versions (snapshot lịch sử)

@@ -72,12 +72,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Form1.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Form1.Designer.cs">
-      <DependentUpon>Form1.cs</DependentUpon>
-    </Compile>
     <Compile Include="TypeRenderForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -106,6 +100,12 @@
       <DependentUpon>CreateDocumentForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Network\SocketClient.cs" />
+    <Compile Include="ShareManagementForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ShareManagementForm.Designer.cs">
+      <DependentUpon>ShareManagementForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="RegisterForm.cs">
       <SubType>Form</SubType>
     </Compile>

@@ -156,15 +156,22 @@ NT106_Project_MarkTogether/
 - WebView2 Runtime
 
 ### Cấu hình database
-1. Tạo database `myapp_db` trong PostgreSQL.
-2. Chạy script tạo bảng (xem file `schema.sql` nếu có).
-3. Thêm cột share_code nếu chưa có:
-   ```sql
-   ALTER TABLE documents ADD COLUMN IF NOT EXISTS share_code VARCHAR(20) UNIQUE;
-   CREATE INDEX IF NOT EXISTS idx_doc_ops_doc_revision
-       ON document_operations(doc_id, revision);
-   ```
-4. Cập nhật connection string trong `MarkTogether.Server/App.config`:
+Nếu bạn chưa bao giờ tạo database cho dự án, hãy làm theo các bước sau:
+
+1.  **Cài đặt PostgreSQL:** Đảm bảo bạn đã cài đặt PostgreSQL (khuyên dùng bản 13 trở lên) và công cụ quản lý như **pgAdmin 4** hoặc **DBeaver**.
+2.  **Tạo Database mới:**
+    - Mở pgAdmin hoặc công cụ bạn dùng.
+    - Kết nối tới server PostgreSQL của bạn (mặc định là localhost:5432).
+    - Chuột phải vào mục **Databases** -> **Create** -> **Database...**
+    - Đặt tên database là `myapp_db` và nhấn **Save**.
+3.  **Khởi tạo Cấu trúc (Schema):**
+    - Chuột phải vào database `myapp_db` vừa tạo, chọn **Query Tool**.
+    - Mở file script khởi tạo tại: `MarkTogether.Server/Database/Scripts/schema_init.sql`.
+    - Copy toàn bộ nội dung trong file đó và dán vào Query Tool.
+    - Nhấn nút **Execute (F5)** để tạo các bảng và index cần thiết.
+4.  **Cập nhật Chuỗi kết nối:**
+    - Mở file `MarkTogether.Server/App.config` trong dự án.
+    - Tìm dòng `<connectionStrings>` và cập nhật thông tin `Username` và `Password` đúng với tài khoản PostgreSQL của bạn (mặc định user thường là `postgres`):
    ```xml
    <add name="MarkTogetherDb"
         connectionString="Host=localhost;Port=5432;Database=myapp_db;Username=postgres;Password=YOUR_PASSWORD"

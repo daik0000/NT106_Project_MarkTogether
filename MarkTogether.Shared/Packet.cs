@@ -24,7 +24,12 @@ namespace MarkTogether.Shared
         OP_DELETE = 11,
         OP_BROADCAST = 12,
         ERROR = 13,
-        OK = 14
+        OK = 14,
+        // [ADDED] Share management
+        DOC_GET_SHARES = 15,   // Lấy danh sách collaborators
+        DOC_REVOKE = 16,       // Xóa quyền user
+        DOC_UPDATE_PERM = 17,  // Đổi quyền user
+        DOC_SET_PUBLIC = 18    // Bật/tắt share with everyone
     }
 
     public class Packet
@@ -154,6 +159,7 @@ namespace MarkTogether.Shared
     {
         public string docID { get; set; }
         public string targetUsername { get; set; }
+        public string Permission { get; set; } // [ADDED]
     }
 
     public class Payload_DOC_SHARE_Response
@@ -163,6 +169,52 @@ namespace MarkTogether.Shared
         public string ShareCode { get; set; }
     }
 
+    // [ADDED] DOC_GET_SHARES
+    public class Payload_DOC_GET_SHARES_Request
+    {
+        public string docID { get; set; }
+    }
+
+    public class CollaboratorInfo
+    {
+        public int userId { get; set; }
+        public string username { get; set; }
+        public string email { get; set; }
+        public string permission { get; set; }
+        public DateTime invitedAt { get; set; }
+    }
+
+    public class Payload_DOC_GET_SHARES_Response
+    {
+        public string docID { get; set; }
+        public string shareCode { get; set; }
+        public bool isPublic { get; set; }
+        public string publicPermission { get; set; }
+        public List<CollaboratorInfo> collaborators { get; set; }
+    }
+
+    // [ADDED] DOC_REVOKE
+    public class Payload_DOC_REVOKE_Request
+    {
+        public string docID { get; set; }
+        public int targetUserId { get; set; }
+    }
+
+    // [ADDED] DOC_UPDATE_PERM
+    public class Payload_DOC_UPDATE_PERM_Request
+    {
+        public string docID { get; set; }
+        public int targetUserId { get; set; }
+        public string permission { get; set; }
+    }
+
+    // [ADDED] DOC_SET_PUBLIC
+    public class Payload_DOC_SET_PUBLIC_Request
+    {
+        public string docID { get; set; }
+        public bool isPublic { get; set; }
+        public string publicPermission { get; set; } // "editor" hoặc "viewer"
+    }
 
     // 
     // OP_INSERT (batch cùng loại, tối đa 5 ops)

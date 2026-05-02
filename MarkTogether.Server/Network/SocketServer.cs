@@ -89,9 +89,19 @@ namespace MarkTogether.Server.Network
             List<ClientHandler> targets;
             lock (_handlersLock)
             {
+                // [DEBUG] Log all active handlers and their currentDocId
+                Console.WriteLine($"[Broadcast] Sending from user={senderUserId} docId={docId}");
+                Console.WriteLine($"[Broadcast] Total active handlers: {_activeHandlers.Count}");
+                foreach (var h in _activeHandlers)
+                {
+                    Console.WriteLine($"[Broadcast]   handler userId={h.UserId} currentDocId={h.CurrentDocId ?? "null"}");
+                }
+
                 targets = _activeHandlers
                     .Where(h => h.CurrentDocId == docId && h.UserId != senderUserId)
                     .ToList();
+
+                Console.WriteLine($"[Broadcast] Targets found: {targets.Count}");
             }
 
             foreach (var handler in targets)
@@ -99,10 +109,11 @@ namespace MarkTogether.Server.Network
                 try
                 {
                     handler.SendPacket(broadcastPacket);
+                    Console.WriteLine($"[Broadcast] Sent to user={handler.UserId}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Server] Broadcast error to user {handler.UserId}: {ex.Message}");
+                    Console.WriteLine($"[Broadcast] Error sending to user {handler.UserId}: {ex.Message}");
                 }
             }
         }

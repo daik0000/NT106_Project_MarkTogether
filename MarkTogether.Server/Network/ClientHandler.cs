@@ -62,50 +62,22 @@ namespace MarkTogether.Server.Network
                         // 2. Dispatch theo MessageType
                         switch (packet.Type)
                         {
-                            case MessageType.AUTH_REGISTER:
-                                HandleRegister(packet);
-                                break;
-
-                            case MessageType.AUTH_LOGIN:
-                                HandleLogin(packet);
-                                break;
-
-                            case MessageType.DOC_LIST:
-                                HandleDocList(packet);
-                                break;
-
-                            case MessageType.DOC_CREATE:
-                                HandleDocCreate(packet);
-                                break;
-
-                            case MessageType.DOC_OPEN:
-                                HandleDocOpen(packet);
-                                break;
-
-                            case MessageType.DOC_SAVE:
-                                HandleDocSave(packet);
-                                break;
-
-                            case MessageType.DOC_LEAVE:
-                                HandleDocLeave(packet);
-                                break;
-
-                            case MessageType.DOC_SHARE:
-                                HandleDocShare(packet);
-                                break;
-
-                            case MessageType.DOC_JOIN_CODE:
-                                HandleDocJoinCode(packet);
-                                break;
-
-                            case MessageType.OP_INSERT:
-                                HandleOpInsert(packet);
-                                break;
-
-                            case MessageType.OP_DELETE:
-                                HandleOpDelete(packet);
-                                break;
-
+                            case MessageType.AUTH_REGISTER: HandleRegister(packet); break;
+                            case MessageType.AUTH_LOGIN: HandleLogin(packet); break;
+                            case MessageType.DOC_LIST: HandleDocList(packet); break;
+                            case MessageType.DOC_CREATE: HandleDocCreate(packet); break;
+                            case MessageType.DOC_OPEN: HandleDocOpen(packet); break;
+                            case MessageType.DOC_SAVE: HandleDocSave(packet); break;
+                            case MessageType.DOC_LEAVE: HandleDocLeave(packet); break;
+                            case MessageType.DOC_SHARE: HandleDocShare(packet); break;
+                            case MessageType.DOC_JOIN_CODE: HandleDocJoinCode(packet); break;
+                            case MessageType.OP_INSERT: HandleOpInsert(packet); break;
+                            case MessageType.OP_DELETE: HandleOpDelete(packet); break;
+                            // [ADDED] Share management
+                            case MessageType.DOC_GET_SHARES: HandleDocGetShares(packet); break;
+                            case MessageType.DOC_REVOKE:     HandleDocRevoke(packet); break;
+                            case MessageType.DOC_UPDATE_PERM: HandleDocUpdatePerm(packet); break;
+                            case MessageType.DOC_SET_PUBLIC:  HandleDocSetPublic(packet); break;
                             default:
                                 // Nếu chưa login → từ chối
                                 if (_userId < 0)
@@ -152,16 +124,8 @@ namespace MarkTogether.Server.Network
         private void HandleRegister(Packet packet)
         {
             Console.WriteLine("[Handler] Nhận yêu cầu ĐĂNG KÝ...");
-
-            // 1. Parse payload từ client
             var payload = packet.GetPayload<Payload_AUTH_REGISTER>();
-
-            // 2. Gọi AuthService xử lý logic
-            Payload_AUTH_RESPONSE response = AuthService.Register(
-                payload.Username, payload.Email, payload.Password
-            );
-
-            // 3. Nếu thành công → lưu session
+            Payload_AUTH_RESPONSE response = AuthService.Register(payload.Username, payload.Email, payload.Password);
             if (response.Success)
             {
                 _token = response.Token;
@@ -169,8 +133,6 @@ namespace MarkTogether.Server.Network
                 _username = response.Username;
                 SessionManager.AddSession(_token, _userId);
             }
-
-            // 4. Gửi kết quả về cho client
             var responsePacket = Packet.Create(MessageType.AUTH_RESPONSE, response);
             PacketHelper.Send(_stream, responsePacket);
         }
@@ -181,16 +143,8 @@ namespace MarkTogether.Server.Network
         private void HandleLogin(Packet packet)
         {
             Console.WriteLine("[Handler] Nhận yêu cầu ĐĂNG NHẬP...");
-
-            // 1. Parse payload
             var payload = packet.GetPayload<Payload_AUTH_LOGIN>();
-
-            // 2. Gọi AuthService
-            Payload_AUTH_RESPONSE response = AuthService.Login(
-                payload.Username, payload.Password
-            );
-
-            // 3. Nếu thành công → lưu session
+            Payload_AUTH_RESPONSE response = AuthService.Login(payload.Username, payload.Password);
             if (response.Success)
             {
                 _token = response.Token;
@@ -198,8 +152,6 @@ namespace MarkTogether.Server.Network
                 _username = response.Username;
                 SessionManager.AddSession(_token, _userId);
             }
-
-            // 4. Trả kết quả
             var responsePacket = Packet.Create(MessageType.AUTH_RESPONSE, response);
             PacketHelper.Send(_stream, responsePacket);
         }
@@ -209,14 +161,8 @@ namespace MarkTogether.Server.Network
             try
             {
                 int currentUserId = ResolveCurrentUserId(packet);
-                if (currentUserId < 0)
-                {
-                    SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
-                    return;
-                }
-
+                if (currentUserId < 0) { SendError("Phiên đăng nhập không hợp lệ."); return; }
                 Console.WriteLine($"[Handler] Nhận yêu cầu DOC_LIST từ user ID={currentUserId}...");
-
                 var docs = DocumentRepository.GetByUserId(currentUserId);
                 var response = new Payload_DOC_LIST_Response
                 {
@@ -228,7 +174,6 @@ namespace MarkTogether.Server.Network
                         updateAt = d.UpdatedAt
                     }).ToList()
                 };
-
                 PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_LIST, response));
             }
             catch (Exception ex)
@@ -241,249 +186,154 @@ namespace MarkTogether.Server.Network
         private void HandleDocCreate(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
-            if (currentUserId < 0)
-            {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
-                return;
-            }
-
+            if (currentUserId < 0) { SendError("Phiên đăng nhập không hợp lệ."); return; }
             var payload = packet.GetPayload<Payload_DOC_CREATE_Request>();
             string title = (payload?.title ?? string.Empty).Trim();
             string initialContent = payload?.content ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                title = "Tài liệu không tiêu đề";
-            }
-
+            if (string.IsNullOrWhiteSpace(title)) title = "Tài liệu không tiêu đề";
             Console.WriteLine($"[Handler] Nhận yêu cầu DOC_CREATE từ user ID={currentUserId}, title='{title}'...");
-
-            // [MODIFIED] Random share code
             string shareCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
-
-            var document = new Document
-            {
-                OwnerId = currentUserId,
-                ShareCode = shareCode,
-                Title = title,
-                Content = initialContent
-            };
-
+            var document = new Document { OwnerId = currentUserId, ShareCode = shareCode, Title = title, Content = initialContent, IsPublic = false, PublicPermission = "viewer" };
             string docId = DocumentRepository.Create(document);
             var createdDoc = DocumentRepository.GetById(docId);
-
-            var response = new Payload_DOC_CREATE_Response
-            {
-                docID = docId,
-                title = createdDoc?.Title ?? title,
-                content = createdDoc?.Content ?? string.Empty,
-                revision = DocumentRepository.GetCurrentRevision(docId),
-                shareCode = shareCode
-            };
-
+            var response = new Payload_DOC_CREATE_Response { docID = docId, title = createdDoc?.Title ?? title, content = createdDoc?.Content ?? string.Empty, revision = DocumentRepository.GetCurrentRevision(docId), shareCode = shareCode };
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_CREATE, response));
         }
 
         private void HandleDocOpen(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
-            if (currentUserId < 0)
-            {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
-                return;
-            }
-
+            if (currentUserId < 0) { SendError("Phiên đăng nhập không hợp lệ."); return; }
             var payload = packet.GetPayload<Payload_DOC_OPEN_Request>();
-            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
-            {
-                SendError("docID không hợp lệ.");
-                return;
-            }
-
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID)) { SendError("docID không hợp lệ."); return; }
             string docId = payload.docID.Trim();
             Console.WriteLine($"[Handler] Nhận yêu cầu DOC_OPEN từ user ID={currentUserId}, docID={docId}...");
-
             var document = DocumentRepository.GetById(docId);
-            if (document == null)
-            {
-                SendError("Không tìm thấy tài liệu.");
-                return;
-            }
-
+            if (document == null) { SendError("Không tìm thấy tài liệu."); return; }
             string permission = DocumentShareRepository.GetPermission(docId, currentUserId);
-            if (permission == null)
-            {
-                SendError("Bạn không có quyền truy cập tài liệu này.");
-                return;
-            }
-
-            // [ADDED] Track current doc
+            if (permission == null) { SendError("Bạn không có quyền truy cập tài liệu này."); return; }
             _currentDocId = docId;
-
-            var response = new Payload_DOC_OPEN_Response
-            {
-                docID = document.Id,
-                title = document.Title,
-                content = document.Content ?? string.Empty,
-                revision = DocumentRepository.GetCurrentRevision(docId),
-                permission = permission
-            };
-
+            var response = new Payload_DOC_OPEN_Response { docID = document.Id, title = document.Title, content = document.Content ?? string.Empty, revision = DocumentRepository.GetCurrentRevision(docId), permission = permission };
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_OPEN, response));
         }
 
         private void HandleDocSave(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
-            if (currentUserId < 0)
-            {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
-                return;
-            }
-
+            if (currentUserId < 0) { SendError("Phiên đăng nhập không hợp lệ."); return; }
             var payload = packet.GetPayload<Payload_DOC_SAVE_Request>();
-            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
-            {
-                SendError("docID không hợp lệ.");
-                return;
-            }
-
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID)) { SendError("docID không hợp lệ."); return; }
             string docId = payload.docID.Trim();
             var document = DocumentRepository.GetById(docId);
-            if (document == null)
-            {
-                SendError("Không tìm thấy tài liệu.");
-                return;
-            }
-
+            if (document == null) { SendError("Không tìm thấy tài liệu."); return; }
             string permission = DocumentShareRepository.GetPermission(docId, currentUserId);
-            if (permission != "owner" && permission != "editor")
-            {
-                SendError("Bạn không có quyền lưu tài liệu này.");
-                return;
-            }
-
+            if (permission != "owner" && permission != "editor") { SendError("Bạn không có quyền lưu tài liệu này."); return; }
             bool updated = DocumentRepository.UpdateContent(docId, payload.content ?? string.Empty);
-            if (!updated)
-            {
-                SendError("Lưu tài liệu thất bại.");
-                return;
-            }
-
-            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
-            {
-                Message = "Lưu tài liệu thành công"
-            }));
+            if (!updated) { SendError("Lưu tài liệu thất bại."); return; }
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Lưu tài liệu thành công" }));
         }
 
-        // [ADDED] Handle DOC_LEAVE
         private void HandleDocLeave(Packet packet)
         {
             var payload = packet.GetPayload<Payload_DOC_LEAVE_Request>();
             string docId = payload?.docID ?? _currentDocId;
-
             Console.WriteLine($"[Handler] User {_username} (ID={_userId}) left document {docId}.");
-            
             _currentDocId = null;
-
-            // [BUG 3 FIX] Clean up state if no one else is editing
             if (!string.IsNullOrEmpty(docId))
             {
                 bool isStillInUse = SocketServer.GetActiveHandlers().Any(h => h.CurrentDocId == docId);
-                if (!isStillInUse)
-                {
-                    DocumentStateManager.Remove(docId);
-                    Console.WriteLine($"[Handler] Cleaned up state for document {docId} (no active editors).");
-                }
+                if (!isStillInUse) { DocumentStateManager.Remove(docId); Console.WriteLine($"[Handler] Cleaned up state for document {docId} (no active editors)."); }
             }
-
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Left document" }));
         }
 
-        // [ADDED] Handle DOC_SHARE
         private void HandleDocShare(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
             var payload = packet.GetPayload<Payload_DOC_SHARE_Request>();
-            if (payload == null || string.IsNullOrEmpty(payload.docID) || string.IsNullOrEmpty(payload.targetUsername))
-            {
-                SendError("Dữ liệu chia sẻ không hợp lệ.");
-                return;
-            }
-
+            if (payload == null || string.IsNullOrEmpty(payload.docID) || string.IsNullOrEmpty(payload.targetUsername)) { SendError("Dữ liệu chia sẻ không hợp lệ."); return; }
             var doc = DocumentRepository.GetById(payload.docID);
             if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
             if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền chia sẻ."); return; }
-
-            // [BUG 2 FIX] Generate share_code if missing
-            if (string.IsNullOrEmpty(doc.ShareCode))
-            {
-                doc.ShareCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
-                DocumentRepository.UpdateShareCode(doc.Id, doc.ShareCode);
-            }
-
+            if (string.IsNullOrEmpty(doc.ShareCode)) { doc.ShareCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(); DocumentRepository.UpdateShareCode(doc.Id, doc.ShareCode); }
             var targetUser = UserRepository.GetByUsername(payload.targetUsername);
             if (targetUser == null) { SendError("Người dùng không tồn tại."); return; }
-
-            // [VERIFIED] Data is saved to DocumentShareRepository
-            DocumentShareRepository.ShareDocument(payload.docID, targetUser.Id, "editor");
-
-            var response = new Payload_DOC_SHARE_Response
-            {
-                success = true,
-                message = $"Đã chia sẻ cho {payload.targetUsername}",
-                ShareCode = doc.ShareCode
-            };
-
+            string sharePermission = (payload.Permission ?? "editor").ToLower();
+            DocumentShareRepository.ShareDocument(payload.docID, targetUser.Id, sharePermission);
+            var response = new Payload_DOC_SHARE_Response { success = true, message = $"Đã chia sẻ cho {payload.targetUsername} với quyền {sharePermission}", ShareCode = doc.ShareCode };
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_SHARE, response));
         }
 
-        // [ADDED] Handle DOC_JOIN_CODE
         private void HandleDocJoinCode(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
             var payload = packet.GetPayload<Payload_DOC_JOIN_CODE_Request>();
-            if (payload == null || string.IsNullOrEmpty(payload.shareCode))
-            {
-                SendError("Mã chia sẻ không hợp lệ.");
-                return;
-            }
-
-            // [MODIFIED] Find by share code
+            if (payload == null || string.IsNullOrEmpty(payload.shareCode)) { SendError("Mã chia sẻ không hợp lệ."); return; }
             var doc = DocumentRepository.GetByShareCode(payload.shareCode);
             if (doc == null) { SendError("Mã chia sẻ không hợp lệ."); return; }
-
-            // [BY DESIGN] Any user with a valid share code can join as viewer without explicit owner approval.
+            if (!doc.IsPublic) { SendError("Tài liệu này không cho phép tham gia bằng mã."); return; }
             string permission = DocumentShareRepository.GetPermission(doc.Id, currentUserId);
-            if (permission == null)
-            {
-                // [VERIFIED] Data is saved to DocumentShareRepository when joining
-                DocumentShareRepository.ShareDocument(doc.Id, currentUserId, "viewer");
-                permission = "viewer";
-            }
+            if (permission == null) { permission = doc.PublicPermission ?? "viewer"; DocumentShareRepository.ShareDocument(doc.Id, currentUserId, permission); }
+            
+            // [FIX] Enable real-time broadcast tracking for public-join users
+            _currentDocId = doc.Id;
 
-            var response = new Payload_DOC_JOIN_CODE_Response
-            {
-                docID = doc.Id,
-                title = doc.Title,
-                content = doc.Content ?? string.Empty,
-                revision = DocumentRepository.GetCurrentRevision(doc.Id),
-                permission = permission
-            };
-
+            var response = new Payload_DOC_JOIN_CODE_Response { docID = doc.Id, title = doc.Title, content = doc.Content ?? string.Empty, revision = DocumentRepository.GetCurrentRevision(doc.Id), permission = permission };
             PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_JOIN_CODE, response));
+        }
+
+        private void HandleDocGetShares(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_GET_SHARES_Request>();
+            var doc = DocumentRepository.GetById(payload.docID);
+            if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
+            if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền xem danh sách chia sẻ."); return; }
+            var collabs = DocumentShareRepository.GetCollaborators(doc.Id);
+            var response = new Payload_DOC_GET_SHARES_Response
+            {
+                docID = doc.Id, shareCode = doc.ShareCode, isPublic = doc.IsPublic, publicPermission = doc.PublicPermission,
+                collaborators = collabs.Select(c => new CollaboratorInfo { userId = (int)c.id, username = (string)c.username, email = (string)c.email, permission = (string)c.permission, invitedAt = (DateTime)c.invited_at }).ToList()
+            };
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_GET_SHARES, response));
+        }
+
+        private void HandleDocRevoke(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_REVOKE_Request>();
+            var doc = DocumentRepository.GetById(payload.docID);
+            if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
+            if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền thu hồi quyền truy cập."); return; }
+            DocumentShareRepository.RevokeAccess(doc.Id, payload.targetUserId);
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Đã thu hồi quyền truy cập." }));
+        }
+
+        private void HandleDocUpdatePerm(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_UPDATE_PERM_Request>();
+            var doc = DocumentRepository.GetById(payload.docID);
+            if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
+            if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền thay đổi quyền truy cập."); return; }
+            DocumentShareRepository.UpdatePermission(doc.Id, payload.targetUserId, payload.permission);
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Đã cập nhật quyền truy cập." }));
+        }
+
+        private void HandleDocSetPublic(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            var payload = packet.GetPayload<Payload_DOC_SET_PUBLIC_Request>();
+            var doc = DocumentRepository.GetById(payload.docID);
+            if (doc == null) { SendError("Tài liệu không tồn tại."); return; }
+            if (doc.OwnerId != currentUserId) { SendError("Chỉ chủ sở hữu mới có quyền thay đổi cài đặt công khai."); return; }
+            DocumentRepository.UpdatePublicSettings(doc.Id, payload.isPublic, payload.publicPermission);
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Đã cập nhật cài đặt công khai." }));
         }
 
         private int ResolveCurrentUserId(Packet packet)
         {
-            if (!string.IsNullOrWhiteSpace(packet?.Token))
-            {
-                int tokenUserId = SessionManager.GetUserId(packet.Token);
-                if (tokenUserId > 0)
-                {
-                    return tokenUserId;
-                }
-            }
-
+            if (!string.IsNullOrWhiteSpace(packet?.Token)) { int id = SessionManager.GetUserId(packet.Token); if (id > 0) return id; }
             return _userId;
         }
 
@@ -493,45 +343,51 @@ namespace MarkTogether.Server.Network
             int currentUserId = ResolveCurrentUserId(packet);
             if (currentUserId < 0)
             {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                Console.WriteLine("[OT] OP_INSERT rejected: not authenticated");
                 return;
             }
-
             var payload = packet.GetPayload<Payload_OP_INSERT>();
             if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
             {
-                SendError("docID không hợp lệ.");
+                Console.WriteLine("[OT] OP_INSERT rejected: invalid docID");
                 return;
             }
 
-            // [OT] Removed charCount > 5 validation as requested
-            
             var state = DocumentStateManager.GetOrCreate(payload.docID);
-
+            var transformedOps = new List<EditOpItem>();
             foreach (var op in payload.ops ?? new List<EditOpItem>())
             {
-                // [OT] Transform op against concurrent server ops
-                var transformedOp = state.TransformAndApply(op, "insert", payload.clientResivion, currentUserId);
+                // [ADDED] Detailed OT logging
+                Console.WriteLine($"[OT] INSERT user={currentUserId} " +
+                    $"clientRev={payload.clientResivion} " +
+                    $"serverRev={state.ServerRevision} " +
+                    $"pos={op.pos} text='{op.text?.Replace("\n", "\\n").Replace("\r", "\\r")}'");
 
-                // [OT] Broadcast transformed op to others
+                var transformedOp = state.TransformAndApply(op, "insert", payload.clientResivion, currentUserId);
+                transformedOps.Add(transformedOp);
+
+                // [ADDED] Post-transform logging
+                Console.WriteLine($"[OT] INSERT transformed pos={transformedOp.pos} " +
+                    $"newServerRev={state.ServerRevision}");
+            }
+
+            // [FIX] Send authoritative revision ACK back to client
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = state.ServerRevision.ToString() }));
+
+            // [OT] Broadcast transformed ops to others
+            foreach (var tOp in transformedOps)
+            {
                 var broadcastPayload = new Payload_OP_BROADCAST
                 {
                     docID = payload.docID,
-                    clientResivion = state.ServerRevision, // server-side revision
+                    clientResivion = state.ServerRevision,
                     userID = currentUserId,
                     username = _username,
                     opType = "insert",
-                    ops = new List<EditOpItem> { transformedOp }
+                    ops = new List<EditOpItem> { tOp }
                 };
-
-                SocketServer.BroadcastToOthers(payload.docID, currentUserId, 
-                    Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
+                SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
             }
-
-            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
-            {
-                Message = "OP_INSERT applied"
-            }));
         }
 
         // [OT] Modified to use Operational Transformation
@@ -540,80 +396,53 @@ namespace MarkTogether.Server.Network
             int currentUserId = ResolveCurrentUserId(packet);
             if (currentUserId < 0)
             {
-                SendError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+                Console.WriteLine("[OT] OP_DELETE rejected: not authenticated");
                 return;
             }
-
             var payload = packet.GetPayload<Payload_OP_DELETE>();
             if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
             {
-                SendError("docID không hợp lệ.");
+                Console.WriteLine("[OT] OP_DELETE rejected: invalid docID");
                 return;
             }
 
-            // [OT] Removed charCount > 5 validation as requested
-
             var state = DocumentStateManager.GetOrCreate(payload.docID);
-
+            var transformedOps = new List<EditOpItem>();
             foreach (var op in payload.ops ?? new List<EditOpItem>())
             {
-                // [OT] Transform op against concurrent server ops
-                var transformedOp = state.TransformAndApply(op, "delete", payload.clientResivion, currentUserId);
+                // [ADDED] Detailed OT logging
+                Console.WriteLine($"[OT] DELETE user={currentUserId} " +
+                    $"clientRev={payload.clientResivion} " +
+                    $"serverRev={state.ServerRevision} " +
+                    $"pos={op.pos} len={op.text?.Length ?? 0}");
 
-                // [OT] Broadcast transformed op to others
+                var transformedOp = state.TransformAndApply(op, "delete", payload.clientResivion, currentUserId);
+                transformedOps.Add(transformedOp);
+
+                // [ADDED] Post-transform logging
+                Console.WriteLine($"[OT] DELETE transformed pos={transformedOp.pos} " +
+                    $"newServerRev={state.ServerRevision}");
+            }
+
+            // [FIX] Send authoritative revision ACK back to client
+            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = state.ServerRevision.ToString() }));
+
+            // [OT] Broadcast transformed ops to others
+            foreach (var tOp in transformedOps)
+            {
                 var broadcastPayload = new Payload_OP_BROADCAST
                 {
                     docID = payload.docID,
-                    clientResivion = state.ServerRevision, // server-side revision
+                    clientResivion = state.ServerRevision,
                     userID = currentUserId,
                     username = _username,
                     opType = "delete",
-                    ops = new List<EditOpItem> { transformedOp }
+                    ops = new List<EditOpItem> { tOp }
                 };
-
-                SocketServer.BroadcastToOthers(payload.docID, currentUserId, 
-                    Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
+                SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
             }
-
-            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
-            {
-                Message = "OP_DELETE applied"
-            }));
         }
 
-        private string BuildOpsDebug(List<EditOpItem> ops)
-        {
-            if (ops == null || ops.Count == 0)
-            {
-                return "  ops=[]";
-            }
-
-            var lines = ops.Select((op, i) =>
-            {
-                if (op == null)
-                {
-                    return $"  op[{i}] = <null>";
-                }
-
-                string safeText = (op.text ?? string.Empty)
-                    .Replace("\\", "\\\\")
-                    .Replace("\r", "\\r")
-                    .Replace("\n", "\\n")
-                    .Replace("\t", "\\t");
-
-                return $"  op[{i}] pos={op.pos}, len={safeText.Length}, text=\"{safeText}\", ts={op.timestamp:O}";
-            });
-
-            return string.Join(Environment.NewLine, lines);
-        }
-
-        // ═══════════════════════════════════════════
-        //  GỬI LỖI
-        // ═══════════════════════════════════════════
-        private void SendError(string message)
-        {
-            var errorPacket = Packet.Create(MessageType.ERROR, new Payload_ERROR { Message = message });
-            PacketHelper.Send(_stream, errorPacket);
-        }
+        private void SendError(string message) { PacketHelper.Send(_stream, Packet.Create(MessageType.ERROR, new Payload_ERROR { Message = message })); }
     }
 }

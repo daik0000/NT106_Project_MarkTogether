@@ -17,8 +17,10 @@ namespace MarkTogether.Client.Network
         private NetworkStream _stream;
         private bool _connected;
         private readonly object _requestSync = new object();
+        private volatile bool _waitingForResponse = false; // [ADDED] Track in-flight requests
 
         // [ADDED] Background listener and response queue
+        // [FIX] Using unbounded collection to ensure no legitimate responses are dropped.
         private readonly BlockingCollection<Packet> _responseQueue = new BlockingCollection<Packet>();
         private Thread _listenerThread;
 
@@ -33,6 +35,21 @@ namespace MarkTogether.Client.Network
 
         // [ADDED] Event for server broadcast
         public event Action<Payload_OP_BROADCAST> BroadcastReceived;
+
+        // [ADDED] Event for revision ACKs
+        public event Action<int> RevisionAckReceived;
+
+        // [ADDED] Persistent logging helper
+        private static void ClientLog(string msg)
+        {
+            string line = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
+            System.Diagnostics.Debug.WriteLine(line);
+            try
+            {
+                System.IO.File.AppendAllText("client_debug.log", line + "\n");
+            }
+            catch { }
+        }
 
         /// <summary>
         /// Kết nối đến server.
@@ -62,14 +79,27 @@ namespace MarkTogether.Client.Network
                         Packet packet = PacketHelper.Receive(_stream);
                         if (packet == null) continue;
 
+                        ClientLog($"[Listener] Packet received: {packet.Type}");
+
                         if (packet.Type == MessageType.OP_BROADCAST)
                         {
                             var payload = packet.GetPayload<Payload_OP_BROADCAST>();
+                            ClientLog($"[Broadcast] docId={payload?.docID} opType={payload?.opType} listeners={BroadcastReceived?.GetInvocationList()?.Length ?? 0}");
                             BroadcastReceived?.Invoke(payload);
+                        }
+                        else if (packet.Type == MessageType.OK && int.TryParse(packet.GetPayload<Payload_OK>()?.Message, out int serverRev))
+                        {
+                            // [FIX] Handle numeric OK as a revision ACK from OP_INSERT/OP_DELETE
+                            RevisionAckReceived?.Invoke(serverRev);
+                        }
+                        else if (_waitingForResponse) // [FIX] Only queue if we expect a response
+                        {
+                            _responseQueue.Add(packet);
                         }
                         else
                         {
-                            _responseQueue.Add(packet);
+                            // Unexpected packet (e.g. OK from DOC_SAVE/DOC_LEAVE) — log and discard
+                            ClientLog($"[Listener] Discarding unexpected packet: {packet.Type}");
                         }
                     }
                     catch (Exception)
@@ -270,8 +300,8 @@ namespace MarkTogether.Client.Network
             catch { /* Ignore errors on leave */ }
         }
 
-        // [ADDED] Share document
-        public Payload_DOC_SHARE_Response ShareDocument(string docId, string targetUsername)
+        // [ADDED] Share document with permission
+        public Payload_DOC_SHARE_Response ShareDocument(string docId, string targetUsername, string permission)
         {
             EnsureAuthenticated();
 
@@ -279,7 +309,8 @@ namespace MarkTogether.Client.Network
                 new Payload_DOC_SHARE_Request
                 {
                     docID = docId,
-                    targetUsername = targetUsername
+                    targetUsername = targetUsername,
+                    Permission = permission
                 });
             packet.Token = Token;
             Packet response = SendAndReceive(packet);
@@ -290,6 +321,72 @@ namespace MarkTogether.Client.Network
             }
 
             return response.GetPayload<Payload_DOC_SHARE_Response>();
+        }
+
+        // [ADDED] Logout and clear session
+        public void Logout()
+        {
+            Disconnect();
+            Token = null;
+            UserId = -1;
+            Username = null;
+        }
+
+        // [ADDED] Get share info
+        public Payload_DOC_GET_SHARES_Response GetShareInfo(string docId)
+        {
+            EnsureAuthenticated();
+            var packet = Packet.Create(MessageType.DOC_GET_SHARES, new Payload_DOC_GET_SHARES_Request { docID = docId });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Không thể lấy thông tin chia sẻ.");
+            }
+            return response.GetPayload<Payload_DOC_GET_SHARES_Response>();
+        }
+
+        // [ADDED] Revoke access
+        public void RevokeAccess(string docId, int targetUserId)
+        {
+            EnsureAuthenticated();
+            var packet = Packet.Create(MessageType.DOC_REVOKE, new Payload_DOC_REVOKE_Request { docID = docId, targetUserId = targetUserId });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Không thể thu hồi quyền truy cập.");
+            }
+        }
+
+        // [ADDED] Update user permission
+        public void UpdatePermission(string docId, int targetUserId, string permission)
+        {
+            EnsureAuthenticated();
+            var packet = Packet.Create(MessageType.DOC_UPDATE_PERM, new Payload_DOC_UPDATE_PERM_Request { docID = docId, targetUserId = targetUserId, permission = permission });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Không thể cập nhật quyền truy cập.");
+            }
+        }
+
+        // [ADDED] Set public access
+        public void SetPublic(string docId, bool isPublic, string publicPermission)
+        {
+            EnsureAuthenticated();
+            var packet = Packet.Create(MessageType.DOC_SET_PUBLIC, new Payload_DOC_SET_PUBLIC_Request { docID = docId, isPublic = isPublic, publicPermission = publicPermission });
+            packet.Token = Token;
+            Packet response = SendAndReceive(packet);
+            if (response.Type == MessageType.ERROR)
+            {
+                var err = response.GetPayload<Payload_ERROR>();
+                throw new InvalidOperationException(err?.Message ?? "Không thể cập nhật cài đặt công khai.");
+            }
         }
 
         // [ADDED] Join by code
@@ -342,16 +439,12 @@ namespace MarkTogether.Client.Network
         {
             var packet = Packet.Create(type, payload);
             packet.Token = Token;
-            Packet response = SendAndReceive(packet);
-            if (response.Type == MessageType.ERROR)
+            
+            // [FIX] Real-time ops are now FIRE-AND-FORGET to prevent deadlocks and lag.
+            // We only lock for the duration of the send operation.
+            lock (_requestSync)
             {
-                var err = response.GetPayload<Payload_ERROR>();
-                throw new InvalidOperationException(err?.Message ?? $"Gửi {type} thất bại.");
-            }
-
-            if (response.Type != MessageType.OK)
-            {
-                throw new InvalidOperationException($"Phản hồi không hợp lệ khi gửi {type}: {response.Type}");
+                Send(packet);
             }
         }
 
@@ -386,8 +479,16 @@ namespace MarkTogether.Client.Network
         {
             lock (_requestSync)
             {
-                Send(packet);
-                return Receive();
+                _waitingForResponse = true; // [FIX] Start expecting
+                try
+                {
+                    Send(packet);
+                    return Receive();
+                }
+                finally
+                {
+                    _waitingForResponse = false; // [FIX] Stop expecting
+                }
             }
         }
 
