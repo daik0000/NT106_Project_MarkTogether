@@ -29,7 +29,8 @@ namespace MarkTogether.Client
         private bool _trackRealtimeOps;
         private int _clientRevision;
 
-        private const int MaxCharsPerPacket = 5;
+        // [OT] Modified to 400ms debounce as requested
+        private const int FlushIntervalMs = 400;
 
         private enum PendingOpType
         {
@@ -99,7 +100,7 @@ namespace MarkTogether.Client
 
             _opFlushTimer = new Timer
             {
-                Interval = 250
+                Interval = FlushIntervalMs // [OT]
             };
             _opFlushTimer.Tick += OpFlushTimer_Tick;
 
@@ -175,7 +176,10 @@ namespace MarkTogether.Client
                 txtRawMarkdown.Text = currentText;
                 txtRawMarkdown.SelectionStart = Math.Max(0, Math.Min(savedCursor, currentText.Length));
                 _lastMarkdownText = currentText;
-                _clientRevision++; // As requested
+                
+                // [OT] Sync revision with server
+                if (broadcast.clientResivion > _clientRevision)
+                    _clientRevision = broadcast.clientResivion;
 
                 // Trigger render
                 _renderRequestVersion++;
@@ -349,7 +353,7 @@ namespace MarkTogether.Client
             }
 
             MergeIntoPending(opType, position, text);
-            SendPendingChunksIfNeeded();
+            // [OT] Removed SendPendingChunksIfNeeded(); // No longer splitting by char count
             RestartOpFlushTimer();
         }
 
@@ -397,16 +401,7 @@ namespace MarkTogether.Client
             }
         }
 
-        private void SendPendingChunksIfNeeded()
-        {
-            while (_pendingOpType.HasValue && _pendingOpText.Length >= MaxCharsPerPacket)
-            {
-                string chunk = _pendingOpText.Substring(0, MaxCharsPerPacket);
-                SendCurrentPendingChunk(chunk);
-                _pendingOpText = _pendingOpText.Substring(MaxCharsPerPacket);
-                _pendingOpStartPos += MaxCharsPerPacket;
-            }
-        }
+        // [OT] Removed SendPendingChunksIfNeeded()
 
         private void OpFlushTimer_Tick(object sender, EventArgs e)
         {
@@ -424,13 +419,10 @@ namespace MarkTogether.Client
         {
             _opFlushTimer.Stop();
 
-            while (_pendingOpType.HasValue && !string.IsNullOrEmpty(_pendingOpText))
+            // [OT] Send entire pending op at once (debounce 400ms)
+            if (_pendingOpType.HasValue && !string.IsNullOrEmpty(_pendingOpText))
             {
-                int size = Math.Min(MaxCharsPerPacket, _pendingOpText.Length);
-                string chunk = _pendingOpText.Substring(0, size);
-                SendCurrentPendingChunk(chunk);
-                _pendingOpText = _pendingOpText.Substring(size);
-                _pendingOpStartPos += size;
+                SendCurrentPendingChunk(_pendingOpText);
             }
 
             _pendingOpType = null;
@@ -463,6 +455,7 @@ namespace MarkTogether.Client
                     SocketClient.Instance.SendDeleteOps(_docId, _clientRevision, ops);
                 }
 
+                // [BUG 2 FIX] Increment revision after successful send
                 _clientRevision++;
             }
             catch

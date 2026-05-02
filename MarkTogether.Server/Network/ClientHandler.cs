@@ -7,6 +7,7 @@ using MarkTogether.Server.Database.Models;
 using MarkTogether.Server.Database.Repositories;
 using MarkTogether.Server.Services;
 using MarkTogether.Shared;
+using MarkTogether.Server.OT; // [OT]
 
 namespace MarkTogether.Server.Network
 {
@@ -377,8 +378,24 @@ namespace MarkTogether.Server.Network
         // [ADDED] Handle DOC_LEAVE
         private void HandleDocLeave(Packet packet)
         {
-            Console.WriteLine($"[Handler] User {_username} (ID={_userId}) left document {_currentDocId}.");
+            var payload = packet.GetPayload<Payload_DOC_LEAVE_Request>();
+            string docId = payload?.docID ?? _currentDocId;
+
+            Console.WriteLine($"[Handler] User {_username} (ID={_userId}) left document {docId}.");
+            
             _currentDocId = null;
+
+            // [BUG 3 FIX] Clean up state if no one else is editing
+            if (!string.IsNullOrEmpty(docId))
+            {
+                bool isStillInUse = SocketServer.GetActiveHandlers().Any(h => h.CurrentDocId == docId);
+                if (!isStillInUse)
+                {
+                    DocumentStateManager.Remove(docId);
+                    Console.WriteLine($"[Handler] Cleaned up state for document {docId} (no active editors).");
+                }
+            }
+
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = "Left document" }));
         }
 
@@ -470,6 +487,7 @@ namespace MarkTogether.Server.Network
             return _userId;
         }
 
+        // [OT] Modified to use Operational Transformation
         private void HandleOpInsert(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
@@ -486,42 +504,37 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            int charCount = (payload.ops ?? new List<EditOpItem>())
-                .Sum(op => op?.text?.Length ?? 0);
+            // [OT] Removed charCount > 5 validation as requested
+            
+            var state = DocumentStateManager.GetOrCreate(payload.docID);
 
-            if (charCount > 5)
+            foreach (var op in payload.ops ?? new List<EditOpItem>())
             {
-                SendError("OP_INSERT chỉ được chứa tối đa 5 ký tự trong một gói.");
-                return;
+                // [OT] Transform op against concurrent server ops
+                var transformedOp = state.TransformAndApply(op, "insert", payload.clientResivion, currentUserId);
+
+                // [OT] Broadcast transformed op to others
+                var broadcastPayload = new Payload_OP_BROADCAST
+                {
+                    docID = payload.docID,
+                    clientResivion = state.ServerRevision, // server-side revision
+                    userID = currentUserId,
+                    username = _username,
+                    opType = "insert",
+                    ops = new List<EditOpItem> { transformedOp }
+                };
+
+                SocketServer.BroadcastToOthers(payload.docID, currentUserId, 
+                    Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
             }
-
-            Console.WriteLine(
-                "[Handler] OP_INSERT received\n" +
-                $"  user={currentUserId}\n" +
-                $"  docID={payload.docID}\n" +
-                $"  clientRevision={payload.clientResivion}\n" +
-                $"  totalChars={charCount}\n" +
-                $"  opsCount={payload.ops?.Count ?? 0}\n" +
-                $"{BuildOpsDebug(payload.ops)}");
-
-            // [ADDED] Broadcast OP_BROADCAST to others
-            var broadcast = new Payload_OP_BROADCAST
-            {
-                docID = payload.docID,
-                clientResivion = payload.clientResivion,
-                userID = currentUserId,
-                username = _username,
-                opType = "insert",
-                ops = payload.ops
-            };
-            SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcast));
 
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
             {
-                Message = "OP_INSERT received"
+                Message = "OP_INSERT applied"
             }));
         }
 
+        // [OT] Modified to use Operational Transformation
         private void HandleOpDelete(Packet packet)
         {
             int currentUserId = ResolveCurrentUserId(packet);
@@ -538,39 +551,33 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            int charCount = (payload.ops ?? new List<EditOpItem>())
-                .Sum(op => op?.text?.Length ?? 0);
+            // [OT] Removed charCount > 5 validation as requested
 
-            if (charCount > 5)
+            var state = DocumentStateManager.GetOrCreate(payload.docID);
+
+            foreach (var op in payload.ops ?? new List<EditOpItem>())
             {
-                SendError("OP_DELETE chỉ được chứa tối đa 5 ký tự trong một gói.");
-                return;
+                // [OT] Transform op against concurrent server ops
+                var transformedOp = state.TransformAndApply(op, "delete", payload.clientResivion, currentUserId);
+
+                // [OT] Broadcast transformed op to others
+                var broadcastPayload = new Payload_OP_BROADCAST
+                {
+                    docID = payload.docID,
+                    clientResivion = state.ServerRevision, // server-side revision
+                    userID = currentUserId,
+                    username = _username,
+                    opType = "delete",
+                    ops = new List<EditOpItem> { transformedOp }
+                };
+
+                SocketServer.BroadcastToOthers(payload.docID, currentUserId, 
+                    Packet.Create(MessageType.OP_BROADCAST, broadcastPayload));
             }
-
-            Console.WriteLine(
-                "[Handler] OP_DELETE received\n" +
-                $"  user={currentUserId}\n" +
-                $"  docID={payload.docID}\n" +
-                $"  clientRevision={payload.clientResivion}\n" +
-                $"  totalChars={charCount}\n" +
-                $"  opsCount={payload.ops?.Count ?? 0}\n" +
-                $"{BuildOpsDebug(payload.ops)}");
-
-            // [ADDED] Broadcast OP_BROADCAST to others
-            var broadcast = new Payload_OP_BROADCAST
-            {
-                docID = payload.docID,
-                clientResivion = payload.clientResivion,
-                userID = currentUserId,
-                username = _username,
-                opType = "delete",
-                ops = payload.ops
-            };
-            SocketServer.BroadcastToOthers(payload.docID, currentUserId, Packet.Create(MessageType.OP_BROADCAST, broadcast));
 
             PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK
             {
-                Message = "OP_DELETE received"
+                Message = "OP_DELETE applied"
             }));
         }
 

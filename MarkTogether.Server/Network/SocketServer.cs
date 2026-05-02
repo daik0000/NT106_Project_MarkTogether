@@ -107,6 +107,15 @@ namespace MarkTogether.Server.Network
             }
         }
 
+        // [ADDED] Get copy of active handlers
+        public static List<ClientHandler> GetActiveHandlers()
+        {
+            lock (_handlersLock)
+            {
+                return _activeHandlers.ToList();
+            }
+        }
+
         /// <summary>
         /// Dừng server.
         /// </summary>

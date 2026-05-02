@@ -179,5 +179,42 @@ namespace MarkTogether.Server.Database.Repositories
                     new { DocId = docId });
             }
         }
+
+        // [OT] Save operation history
+        public static void SaveOperation(DocumentOperation op)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                db.Execute(
+                    @"INSERT INTO document_operations (doc_id, user_id, op_type, pos, text, length, revision, applied_at)
+                      VALUES (@DocId, @UserId, @OpType, @Pos, @Text, @Length, @Revision, @AppliedAt)",
+                    new
+                    {
+                        op.DocId,
+                        op.UserId,
+                        op.OpType,
+                        op.Pos,
+                        op.Text,
+                        op.Length,
+                        op.Revision,
+                        AppliedAt = DateTime.UtcNow
+                    });
+            }
+        }
+
+        // [OT] Get operations since a revision
+        public static List<DocumentOperation> GetOpsSince(string docId, int fromRevision)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.Query<DocumentOperation>(
+                    @"SELECT * FROM document_operations 
+                      WHERE doc_id = @DocId AND revision > @FromRevision
+                      ORDER BY revision ASC",
+                    new { DocId = docId, FromRevision = fromRevision }).ToList();
+            }
+        }
     }
 }
