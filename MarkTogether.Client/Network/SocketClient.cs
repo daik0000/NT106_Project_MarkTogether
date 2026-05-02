@@ -271,7 +271,7 @@ namespace MarkTogether.Client.Network
         }
 
         // [ADDED] Share document
-        public void ShareDocument(string docId, string targetUsername)
+        public Payload_DOC_SHARE_Response ShareDocument(string docId, string targetUsername)
         {
             EnsureAuthenticated();
 
@@ -288,6 +288,8 @@ namespace MarkTogether.Client.Network
                 var err = response.GetPayload<Payload_ERROR>();
                 throw new InvalidOperationException(err?.Message ?? "Không thể chia sẻ tài liệu.");
             }
+
+            return response.GetPayload<Payload_DOC_SHARE_Response>();
         }
 
         // [ADDED] Join by code

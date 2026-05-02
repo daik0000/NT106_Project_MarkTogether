@@ -409,7 +409,15 @@ namespace MarkTogether.Server.Network
 
             // [VERIFIED] Data is saved to DocumentShareRepository
             DocumentShareRepository.ShareDocument(payload.docID, targetUser.Id, "editor");
-            PacketHelper.Send(_stream, Packet.Create(MessageType.OK, new Payload_OK { Message = $"Đã chia sẻ cho {payload.targetUsername}" }));
+
+            var response = new Payload_DOC_SHARE_Response
+            {
+                success = true,
+                message = $"Đã chia sẻ cho {payload.targetUsername}",
+                ShareCode = doc.ShareCode
+            };
+
+            PacketHelper.Send(_stream, Packet.Create(MessageType.DOC_SHARE, response));
         }
 
         // [ADDED] Handle DOC_JOIN_CODE

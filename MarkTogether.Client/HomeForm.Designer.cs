@@ -61,6 +61,36 @@ namespace MarkTogether.Client
             this.pnlTop.Size = new System.Drawing.Size(1765, 262);
             this.pnlTop.TabIndex = 0;
             // 
+            // btnJoinCode
+            // 
+            this.btnJoinCode.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnJoinCode.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(46)))), ((int)(((byte)(204)))), ((int)(((byte)(113)))));
+            this.btnJoinCode.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnJoinCode.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F);
+            this.btnJoinCode.ForeColor = System.Drawing.Color.White;
+            this.btnJoinCode.Location = new System.Drawing.Point(1116, 67);
+            this.btnJoinCode.Name = "btnJoinCode";
+            this.btnJoinCode.Size = new System.Drawing.Size(160, 55);
+            this.btnJoinCode.TabIndex = 5;
+            this.btnJoinCode.Text = "Join Code";
+            this.btnJoinCode.UseVisualStyleBackColor = false;
+            this.btnJoinCode.Click += new System.EventHandler(this.btnJoinCode_Click);
+            // 
+            // btnShare
+            // 
+            this.btnShare.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnShare.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(230)))), ((int)(((byte)(126)))), ((int)(((byte)(34)))));
+            this.btnShare.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnShare.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F);
+            this.btnShare.ForeColor = System.Drawing.Color.White;
+            this.btnShare.Location = new System.Drawing.Point(966, 67);
+            this.btnShare.Name = "btnShare";
+            this.btnShare.Size = new System.Drawing.Size(130, 55);
+            this.btnShare.TabIndex = 6;
+            this.btnShare.Text = "Share";
+            this.btnShare.UseVisualStyleBackColor = false;
+            this.btnShare.Click += new System.EventHandler(this.btnShare_Click);
+            // 
             // btnImportMd
             // 
             this.btnImportMd.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));

@@ -257,8 +257,9 @@ namespace MarkTogether.Client
             try
             {
                 ToggleLoadingState(true);
-                await Task.Run(() => SocketClient.Instance.ShareDocument(selectedDoc.docID, targetUsername));
-                MessageBox.Show($"Đã chia sẻ tài liệu cho {targetUsername}!", "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                var response = await Task.Run(() => SocketClient.Instance.ShareDocument(selectedDoc.docID, targetUsername));
+                MessageBox.Show($"Đã chia sẻ thành công!\n\nMã chia sẻ: {response.ShareCode}\n\nGửi mã này cho {targetUsername} để họ dùng Join by Code.",
+                    "Chia sẻ thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
