@@ -147,50 +147,72 @@ NT106_Project_MarkTogether/
 
 ---
 
-## Hướng dẫn chạy
+## Hướng dẫn sử dụng (Dành cho người dùng)
+
+Hệ thống **MarkTogether Server** đã được triển khai sẵn trên máy chủ VPS cùng với cơ sở dữ liệu PostgreSQL. Bạn chỉ cần chạy Client để kết nối và sử dụng.
 
 ### Yêu cầu
-- Visual Studio 2022 trở lên
-- .NET Framework 4.7.2
-- PostgreSQL 13+
-- WebView2 Runtime
+- Máy tính chạy Windows.
+- Đã cài đặt **WebView2 Runtime** (thường đã có sẵn trên Windows 11).
 
-### Cấu hình database
-Nếu bạn chưa bao giờ tạo database cho dự án, hãy làm theo các bước sau:
+### Cài đặt và kết nối
+1. Tải về bản Release mới nhất của `MarkTogether.Client` hoặc build project `MarkTogether.Client`.
+2. Mở thư mục chứa ứng dụng Client (ví dụ: `bin\Release`).
+3. Mở file `server.config` bằng Notepad và nhập địa chỉ IP VPS của nhóm:
+   ```text
+   HOST=DIEN_IP_VPS_CUA_NHOM_VAO_DAY
+   PORT=5000
+   ```
+   *(Lưu ý: Nếu chạy nội bộ trên cùng máy, giữ nguyên `HOST=localhost`)*
+4. Chạy file `MarkTogether.Client.exe` để bắt đầu sử dụng. Bạn có thể mở nhiều cửa sổ Client cùng lúc để test tính năng cộng tác.
 
-1.  **Cài đặt PostgreSQL:** Đảm bảo bạn đã cài đặt PostgreSQL (khuyên dùng bản 13 trở lên) và công cụ quản lý như **pgAdmin 4** hoặc **DBeaver**.
+---
+
+## Dành cho nhà phát triển (Chạy Server nội bộ)
+
+Nếu bạn muốn phát triển thêm tính năng hoặc tự host server nội bộ, hãy làm theo các bước sau:
+
+### Yêu cầu hệ thống
+- Visual Studio 2022 trở lên.
+- .NET Framework 4.7.2.
+- PostgreSQL 13+.
+
+### 1. Cấu hình Database
+Nếu bạn chưa bao giờ tạo database cho dự án:
+
+1.  **Cài đặt PostgreSQL:** Đảm bảo bạn đã cài đặt PostgreSQL và công cụ quản lý như **pgAdmin 4** hoặc **DBeaver**.
 2.  **Tạo Database mới:**
-    - Mở pgAdmin hoặc công cụ bạn dùng.
-    - Kết nối tới server PostgreSQL của bạn (mặc định là localhost:5432).
-    - Chuột phải vào mục **Databases** -> **Create** -> **Database...**
-    - Đặt tên database là `myapp_db` và nhấn **Save**.
-3.  **Khởi tạo Cấu trúc (Schema):**
-    - Chuột phải vào database `myapp_db` vừa tạo, chọn **Query Tool**.
-    - Mở file script khởi tạo tại: `MarkTogether.Server/Database/Scripts/schema_init.sql`.
-    - Copy toàn bộ nội dung trong file đó và dán vào Query Tool.
-    - Nhấn nút **Execute (F5)** để tạo các bảng và index cần thiết.
+    - Kết nối tới server PostgreSQL của bạn (mặc định localhost:5432).
+    - Tạo database mới tên là `myapp_db`.
+3.  **Khởi tạo Schema:**
+    - Mở file script tại: `MarkTogether.Server/Database/Scripts/schema_init.sql`.
+    - Chạy toàn bộ lệnh SQL trong file này trên database `myapp_db` để tạo các bảng, trigger và index cần thiết.
 4.  **Cập nhật Chuỗi kết nối:**
-    - Mở file `MarkTogether.Server/App.config` trong dự án.
-    - Tìm dòng `<connectionStrings>` và cập nhật thông tin `Username` và `Password` đúng với tài khoản PostgreSQL của bạn (mặc định user thường là `postgres`):
+    - Mở file `MarkTogether.Server/App.config`.
+    - Cập nhật `Username` và `Password` đúng với PostgreSQL của bạn:
    ```xml
    <add name="MarkTogetherDb"
         connectionString="Host=localhost;Port=5432;Database=myapp_db;Username=postgres;Password=YOUR_PASSWORD"
         providerName="Npgsql" />
    ```
 
-### Build
+### 2. Triển khai Server lên Linux (VPS)
+Dự án hỗ trợ chạy ngầm trên Linux thông qua Mono và Systemd:
+- Cài đặt Mono: `sudo apt install mono-complete`.
+- Chạy server dạng background service:
+  ```bash
+  mono MarkTogether.Server.exe --service
+  ```
+
+### 3. Build & Chạy nội bộ
 ```cmd
+:: Build toàn bộ project
 "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" MarkTogether.sln /p:Configuration=Debug /t:Rebuild
-```
 
-### Chạy
-Mở 2 terminal riêng, chạy Server trước:
-
-```cmd
-:: Terminal 1 — Server
+:: Chạy Server
 MarkTogether.Server\bin\Debug\MarkTogether.Server.exe
 
-:: Terminal 2 — Client
+:: Chạy Client
 MarkTogether.Client\bin\Debug\MarkTogether.Client.exe
 ```
 

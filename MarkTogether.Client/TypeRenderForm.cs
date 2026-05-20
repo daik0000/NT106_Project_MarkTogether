@@ -85,7 +85,7 @@ namespace MarkTogether.Client
 
             if (!string.IsNullOrEmpty(_docId))
             {
-                System.IO.File.AppendAllText("client_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [TypeRender] Subscribed to BroadcastReceived for docId={_docId}\n");
+                Logger.Log($"[TypeRender] Subscribed to BroadcastReceived for docId={_docId}");
                 SocketClient.Instance.BroadcastReceived += OnBroadcastReceived;
                 
                 // [FIX] Subscribe to revision ACKs to stay in sync with server authoritative state
@@ -109,7 +109,7 @@ namespace MarkTogether.Client
 
         private void OnBroadcastReceived(MarkTogether.Shared.Payload_OP_BROADCAST broadcast)
         {
-            System.IO.File.AppendAllText("client_debug.log", $"[{DateTime.Now:HH:mm:ss.fff}] [TypeRender] OnBroadcastReceived docId={broadcast?.docID} _docId={_docId}\n");
+            Logger.Log($"[TypeRender] OnBroadcastReceived docId={broadcast?.docID} _docId={_docId}");
             if (broadcast == null || broadcast.docID != _docId)
                 return;
             

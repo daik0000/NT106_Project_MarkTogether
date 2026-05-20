@@ -42,13 +42,7 @@ namespace MarkTogether.Client.Network
         // [ADDED] Persistent logging helper
         private static void ClientLog(string msg)
         {
-            string line = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
-            System.Diagnostics.Debug.WriteLine(line);
-            try
-            {
-                System.IO.File.AppendAllText("client_debug.log", line + "\n");
-            }
-            catch { }
+            Logger.Log(msg);
         }
 
         /// <summary>
