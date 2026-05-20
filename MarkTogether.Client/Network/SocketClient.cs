@@ -54,9 +54,33 @@ namespace MarkTogether.Client.Network
         /// <summary>
         /// Kết nối đến server.
         /// </summary>
-        public void Connect(string host = "localhost", int port = 5000)
+        public void Connect()
         {
             if (_connected) return; // Đã kết nối rồi thì bỏ qua
+
+            string host = "localhost";
+            int port = 5000;
+
+            try
+            {
+                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server.config");
+                if (System.IO.File.Exists(configPath))
+                {
+                    var lines = System.IO.File.ReadAllLines(configPath);
+                    foreach (var line in lines)
+                    {
+                        var parts = line.Split('=');
+                        if (parts.Length == 2)
+                        {
+                            string key = parts[0].Trim().ToUpper();
+                            string val = parts[1].Trim();
+                            if (key == "HOST") host = val;
+                            else if (key == "PORT") int.TryParse(val, out port);
+                        }
+                    }
+                }
+            }
+            catch { /* Fallback to default */ }
 
             _tcp = new TcpClient();
             _tcp.Connect(host, port);

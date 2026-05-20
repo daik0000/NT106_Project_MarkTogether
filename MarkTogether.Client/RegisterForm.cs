@@ -48,7 +48,7 @@ namespace MarkTogether.Client
                 lblError.Visible = false;
 
                 // Kết nối nếu chưa kết nối
-                SocketClient.Instance.Connect("localhost", 5000);
+                SocketClient.Instance.Connect();
 
                 // Gửi yêu cầu đăng ký
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Register(username, email, password);
