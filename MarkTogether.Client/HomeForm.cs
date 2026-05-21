@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
 using MarkTogether.Shared;
+using Microsoft.VisualBasic; // [ADDED] For InputBox
 
 namespace MarkTogether.Client
 {
@@ -18,6 +19,9 @@ namespace MarkTogether.Client
         private readonly ImageList _rowHeightImageList;
         private List<DocInfo> _allDocuments = new List<DocInfo>();
         private readonly Font _headerFont;
+
+        // [FIX] Track open editors to prevent duplicate subscriptions
+        private readonly Dictionary<string, TypeRenderForm> _openEditors = new Dictionary<string, TypeRenderForm>();
 
         public HomeForm()
         {
@@ -36,6 +40,11 @@ namespace MarkTogether.Client
             ApplyRoundedButtonStyle(btnCreateDocument, Color.DodgerBlue, Color.RoyalBlue, 12);
             ApplyRoundedButtonStyle(btnImportMd, Color.FromArgb(155, 89, 182), Color.FromArgb(142, 68, 173), 12);
 
+            // [ADDED] Style new buttons
+            ApplyRoundedButtonStyle(btnJoinCode, Color.FromArgb(46, 204, 113), Color.FromArgb(39, 174, 96), 12);
+            ApplyRoundedButtonStyle(btnShare, Color.FromArgb(230, 126, 34), Color.FromArgb(211, 84, 0), 12);
+            ApplyRoundedButtonStyle(btnLogOut, Color.Crimson, Color.Firebrick, 12); // [ADDED]
+
             Resize += HomeForm_Resize;
             Shown += HomeForm_Shown;
         }
@@ -44,6 +53,10 @@ namespace MarkTogether.Client
         {
             ApplyButtonRoundedRegion(btnCreateDocument, 12);
             ApplyButtonRoundedRegion(btnImportMd, 12);
+            // [ADDED]
+            ApplyButtonRoundedRegion(btnJoinCode, 12);
+            ApplyButtonRoundedRegion(btnShare, 12);
+            ApplyButtonRoundedRegion(btnLogOut, 12); // [ADDED]
         }
 
         private async void HomeForm_Shown(object sender, EventArgs e)
@@ -151,7 +164,7 @@ namespace MarkTogether.Client
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(dlg.DocumentTitle));
                     await LoadDocumentsAsync();
 
-                    OpenDocumentEditor(created.docID, created.title, created.content);
+                    OpenDocumentEditor(created.docID, created.title, created.content, "owner", created.revision); // [MODIFIED]
                 }
                 catch (Exception ex)
                 {
@@ -190,7 +203,7 @@ namespace MarkTogether.Client
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(title, content));
                     await LoadDocumentsAsync();
 
-                    OpenDocumentEditor(created.docID, created.title, created.content);
+                    OpenDocumentEditor(created.docID, created.title, created.content, "owner", created.revision); // [MODIFIED]
                 }
                 catch (Exception ex)
                 {
@@ -204,6 +217,68 @@ namespace MarkTogether.Client
                     ToggleLoadingState(false);
                 }
             }
+        }
+
+        // [ADDED] Join by code click
+        private async void btnJoinCode_Click(object sender, EventArgs e)
+        {
+            string shareCode = Interaction.InputBox("Nhập mã chia sẻ:", "Tham gia tài liệu", "");
+            if (string.IsNullOrWhiteSpace(shareCode)) return;
+
+            try
+            {
+                ToggleLoadingState(true);
+                var response = await Task.Run(() => SocketClient.Instance.JoinByCode(shareCode));
+                
+                // Reload list and open editor
+                await LoadDocumentsAsync();
+                OpenDocumentEditor(response.docID, response.title, response.content, response.permission, response.revision); // [MODIFIED]
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi tham gia tài liệu: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ToggleLoadingState(false);
+            }
+        }
+
+        // [ADDED] Share document click
+        private void btnShare_Click(object sender, EventArgs e)
+        {
+            if (listDocuments.SelectedItems.Count == 0)
+            {
+                MessageBox.Show("Vui lòng chọn tài liệu muốn quản lý chia sẻ.", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedDoc = listDocuments.SelectedItems[0].Tag as DocInfo;
+            if (selectedDoc == null) return;
+
+            // Only owner can manage shares
+            if (selectedDoc.permission?.ToLower() != "owner")
+            {
+                MessageBox.Show("Chỉ chủ sở hữu mới có quyền quản lý chia sẻ tài liệu này.", "Không có quyền", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (var shareForm = new ShareManagementForm(selectedDoc.docID, selectedDoc.title))
+            {
+                shareForm.ShowDialog(this);
+            }
+
+            // Reload list after closing share form
+            _ = LoadDocumentsAsync();
+        }
+
+        // [ADDED] Logout click
+        private void btnLogOut_Click(object sender, EventArgs e)
+        {
+            SocketClient.Instance.Logout();
+            this.Hide();
+            new LoginForm().Show();
+            this.Close();
         }
 
         private void cmbSortMode_SelectedIndexChanged(object sender, EventArgs e)
@@ -239,7 +314,7 @@ namespace MarkTogether.Client
                 _isOpeningDocument = true;
                 ToggleLoadingState(true);
                 var opened = await Task.Run(() => SocketClient.Instance.OpenDocument(selectedDoc.docID));
-                OpenDocumentEditor(opened.docID, opened.title, opened.content);
+                OpenDocumentEditor(opened.docID, opened.title, opened.content, opened.permission, opened.revision); // [MODIFIED]
             }
             catch (Exception ex)
             {
@@ -255,7 +330,7 @@ namespace MarkTogether.Client
             }
         }
 
-        private void OpenDocumentEditor(string docId, string title, string content)
+        private void OpenDocumentEditor(string docId, string title, string content, string permission, int revision) // [MODIFIED]
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
@@ -266,7 +341,20 @@ namespace MarkTogether.Client
                 return;
             }
 
-            var editor = new TypeRenderForm(docId, title, content);
+            // [FIX] Reuse existing editor if already open for this docId
+            if (_openEditors.TryGetValue(docId, out var existing) && !existing.IsDisposed)
+            {
+                existing.BringToFront();
+                existing.Focus();
+                return;
+            }
+
+            var editor = new TypeRenderForm(docId, title, content, permission, revision); // [MODIFIED]
+            
+            // [FIX] Track and cleanup when closed
+            editor.FormClosed += (s, e) => _openEditors.Remove(docId);
+            _openEditors[docId] = editor;
+            
             editor.Show(this);
         }
 
@@ -274,6 +362,9 @@ namespace MarkTogether.Client
         {
             btnCreateDocument.Enabled = !isLoading;
             btnImportMd.Enabled = !isLoading;
+            btnJoinCode.Enabled = !isLoading; // [ADDED]
+            btnShare.Enabled = !isLoading;    // [ADDED]
+            btnLogOut.Enabled = !isLoading;   // [ADDED]
             cmbSortMode.Enabled = !isLoading;
             listDocuments.Enabled = !isLoading;
         }

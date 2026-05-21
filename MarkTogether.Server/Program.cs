@@ -20,9 +20,20 @@ namespace MarkTogether.Server
             { "System.Numerics.Vectors", @"..\..\..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll" }
         };
 
+        private static readonly System.Threading.ManualResetEvent _quitEvent = new System.Threading.ManualResetEvent(false);
+
         static void Main(string[] args)
         {
             AppDomain.CurrentDomain.AssemblyResolve += ResolveMissingAssembly;
+
+            bool isService = false;
+            foreach (var arg in args)
+            {
+                if (arg.Equals("--service", StringComparison.OrdinalIgnoreCase))
+                {
+                    isService = true;
+                }
+            }
 
             // 1. Bật Dapper mapping snake_case (PostgreSQL) ↔ PascalCase (C#)
             Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
@@ -30,8 +41,8 @@ namespace MarkTogether.Server
             Console.WriteLine("╔════════════════════════════════════════╗");
             Console.WriteLine("║     MarkTogether Server v1.0          ║");
             Console.WriteLine("╠════════════════════════════════════════╣");
-            Console.WriteLine("║  PostgreSQL: localhost:5432/myapp_db   ║");
             Console.WriteLine("║  TCP Socket: port 5000                ║");
+            Console.WriteLine($"║  Mode: {(isService ? "Service" : "Interactive")}                 ║");
             Console.WriteLine("╚════════════════════════════════════════╝");
             Console.WriteLine();
 
@@ -39,8 +50,26 @@ namespace MarkTogether.Server
             var server = new SocketServer(5000);
             Task.Run(() => server.StartAsync());
 
-            Console.WriteLine("Nhấn Enter để dừng server...");
-            Console.ReadLine();
+            if (isService)
+            {
+                Console.WriteLine("[Server] Chạy dưới dạng service. Nhấn Ctrl+C để dừng.");
+                
+                // Xử lý Graceful Shutdown trên Linux (SIGTERM/SIGINT) và Windows
+                Console.CancelKeyPress += (sender, e) =>
+                {
+                    e.Cancel = true;
+                    _quitEvent.Set();
+                };
+
+                _quitEvent.WaitOne();
+            }
+            else
+            {
+                Console.WriteLine("Nhấn Enter để dừng server...");
+                Console.ReadLine();
+            }
+
+            Console.WriteLine("[Server] Đang tắt...");
             server.Stop();
         }
 

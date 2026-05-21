@@ -29,6 +29,9 @@ namespace MarkTogether.Client
         private void InitializeComponent()
         {
             this.pnlTop = new System.Windows.Forms.Panel();
+            this.btnLogOut = new System.Windows.Forms.Button();
+            this.btnShare = new System.Windows.Forms.Button();
+            this.btnJoinCode = new System.Windows.Forms.Button();
             this.btnImportMd = new System.Windows.Forms.Button();
             this.cmbSortMode = new System.Windows.Forms.ComboBox();
             this.lblSort = new System.Windows.Forms.Label();
@@ -45,6 +48,9 @@ namespace MarkTogether.Client
             // pnlTop
             // 
             this.pnlTop.BackColor = System.Drawing.Color.White;
+            this.pnlTop.Controls.Add(this.btnLogOut);
+            this.pnlTop.Controls.Add(this.btnShare);
+            this.pnlTop.Controls.Add(this.btnJoinCode);
             this.pnlTop.Controls.Add(this.btnImportMd);
             this.pnlTop.Controls.Add(this.cmbSortMode);
             this.pnlTop.Controls.Add(this.lblSort);
@@ -57,19 +63,64 @@ namespace MarkTogether.Client
             this.pnlTop.Size = new System.Drawing.Size(1765, 262);
             this.pnlTop.TabIndex = 0;
             // 
+            // btnLogOut
+            // 
+            this.btnLogOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnLogOut.BackColor = System.Drawing.Color.Crimson;
+            this.btnLogOut.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnLogOut.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F);
+            this.btnLogOut.ForeColor = System.Drawing.Color.White;
+            this.btnLogOut.Location = new System.Drawing.Point(960, 100);
+            this.btnLogOut.Name = "btnLogOut";
+            this.btnLogOut.Size = new System.Drawing.Size(150, 50);
+            this.btnLogOut.TabIndex = 7;
+            this.btnLogOut.Text = "Đăng xuất";
+            this.btnLogOut.UseVisualStyleBackColor = false;
+            this.btnLogOut.Click += new System.EventHandler(this.btnLogOut_Click);
+            // 
+            // btnShare
+            // 
+            this.btnShare.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnShare.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(230)))), ((int)(((byte)(126)))), ((int)(((byte)(34)))));
+            this.btnShare.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnShare.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F);
+            this.btnShare.ForeColor = System.Drawing.Color.White;
+            this.btnShare.Location = new System.Drawing.Point(1120, 100);
+            this.btnShare.Name = "btnShare";
+            this.btnShare.Size = new System.Drawing.Size(150, 50);
+            this.btnShare.TabIndex = 6;
+            this.btnShare.Text = "Chia sẻ";
+            this.btnShare.UseVisualStyleBackColor = false;
+            this.btnShare.Click += new System.EventHandler(this.btnShare_Click);
+            // 
+            // btnJoinCode
+            // 
+            this.btnJoinCode.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnJoinCode.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(46)))), ((int)(((byte)(204)))), ((int)(((byte)(113)))));
+            this.btnJoinCode.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnJoinCode.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F);
+            this.btnJoinCode.ForeColor = System.Drawing.Color.WhiteSmoke;
+            this.btnJoinCode.Location = new System.Drawing.Point(1280, 100);
+            this.btnJoinCode.Name = "btnJoinCode";
+            this.btnJoinCode.Size = new System.Drawing.Size(150, 50);
+            this.btnJoinCode.TabIndex = 5;
+            this.btnJoinCode.Text = "Tham gia";
+            this.btnJoinCode.UseVisualStyleBackColor = false;
+            this.btnJoinCode.Click += new System.EventHandler(this.btnJoinCode_Click);
+            // 
             // btnImportMd
             // 
             this.btnImportMd.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnImportMd.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(155)))), ((int)(((byte)(89)))), ((int)(((byte)(182)))));
             this.btnImportMd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnImportMd.Font = new System.Drawing.Font("Microsoft Sans Serif", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnImportMd.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F);
             this.btnImportMd.ForeColor = System.Drawing.Color.White;
-            this.btnImportMd.Location = new System.Drawing.Point(1296, 67);
+            this.btnImportMd.Location = new System.Drawing.Point(1440, 100);
             this.btnImportMd.Margin = new System.Windows.Forms.Padding(4);
             this.btnImportMd.Name = "btnImportMd";
-            this.btnImportMd.Size = new System.Drawing.Size(230, 55);
+            this.btnImportMd.Size = new System.Drawing.Size(150, 50);
             this.btnImportMd.TabIndex = 4;
-            this.btnImportMd.Text = "Import MD File";
+            this.btnImportMd.Text = "Import";
             this.btnImportMd.UseVisualStyleBackColor = false;
             this.btnImportMd.Click += new System.EventHandler(this.btnImportMd_Click);
             // 
@@ -83,7 +134,7 @@ namespace MarkTogether.Client
             "Old to New",
             "A to Z",
             "Z to A"});
-            this.cmbSortMode.Location = new System.Drawing.Point(792, 81);
+            this.cmbSortMode.Location = new System.Drawing.Point(116, 170);
             this.cmbSortMode.Margin = new System.Windows.Forms.Padding(4);
             this.cmbSortMode.Name = "cmbSortMode";
             this.cmbSortMode.Size = new System.Drawing.Size(249, 33);
@@ -94,7 +145,7 @@ namespace MarkTogether.Client
             // 
             this.lblSort.AutoSize = true;
             this.lblSort.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
-            this.lblSort.Location = new System.Drawing.Point(732, 81);
+            this.lblSort.Location = new System.Drawing.Point(56, 170);
             this.lblSort.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.lblSort.Name = "lblSort";
             this.lblSort.Size = new System.Drawing.Size(52, 28);
@@ -106,14 +157,14 @@ namespace MarkTogether.Client
             this.btnCreateDocument.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnCreateDocument.BackColor = System.Drawing.Color.DodgerBlue;
             this.btnCreateDocument.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnCreateDocument.Font = new System.Drawing.Font("Microsoft Sans Serif", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnCreateDocument.Font = new System.Drawing.Font("Microsoft Sans Serif", 11F);
             this.btnCreateDocument.ForeColor = System.Drawing.Color.White;
-            this.btnCreateDocument.Location = new System.Drawing.Point(1570, 67);
+            this.btnCreateDocument.Location = new System.Drawing.Point(1600, 100);
             this.btnCreateDocument.Margin = new System.Windows.Forms.Padding(4);
             this.btnCreateDocument.Name = "btnCreateDocument";
-            this.btnCreateDocument.Size = new System.Drawing.Size(154, 55);
+            this.btnCreateDocument.Size = new System.Drawing.Size(150, 50);
             this.btnCreateDocument.TabIndex = 1;
-            this.btnCreateDocument.Text = "New Note";
+            this.btnCreateDocument.Text = "Tạo mới";
             this.btnCreateDocument.UseVisualStyleBackColor = false;
             this.btnCreateDocument.Click += new System.EventHandler(this.btnCreateDocument_Click);
             // 
@@ -122,7 +173,7 @@ namespace MarkTogether.Client
             this.lblWelcome.AutoSize = true;
             this.lblWelcome.Font = new System.Drawing.Font("Segoe UI", 22F, System.Drawing.FontStyle.Bold);
             this.lblWelcome.ForeColor = System.Drawing.SystemColors.Highlight;
-            this.lblWelcome.Location = new System.Drawing.Point(52, 67);
+            this.lblWelcome.Location = new System.Drawing.Point(52, 100);
             this.lblWelcome.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.lblWelcome.Name = "lblWelcome";
             this.lblWelcome.Size = new System.Drawing.Size(154, 50);
@@ -209,6 +260,9 @@ namespace MarkTogether.Client
     private System.Windows.Forms.Button btnImportMd;
     private System.Windows.Forms.ComboBox cmbSortMode;
     private System.Windows.Forms.Label lblSort;
+    private System.Windows.Forms.Button btnLogOut;
+    private System.Windows.Forms.Button btnJoinCode;
+    private System.Windows.Forms.Button btnShare;
         private System.Windows.Forms.ListView listDocuments;
         private System.Windows.Forms.ColumnHeader colTitle;
         private System.Windows.Forms.ColumnHeader colUpdatedAt;

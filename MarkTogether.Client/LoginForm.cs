@@ -32,7 +32,7 @@ namespace MarkTogether.Client
                 lblError.Visible = false;
 
                 // Kết nối server (nếu chưa)
-                SocketClient.Instance.Connect("localhost", 5000);
+                SocketClient.Instance.Connect();
 
                 // Gửi yêu cầu đăng nhập
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);

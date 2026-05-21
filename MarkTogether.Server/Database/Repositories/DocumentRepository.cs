@@ -5,6 +5,9 @@ using System.Linq;
 using Dapper;
 using MarkTogether.Server.Database.Models;
 
+// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
+// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS public_permission VARCHAR(10) DEFAULT 'viewer';
+
 namespace MarkTogether.Server.Database.Repositories
 {
     /// <summary>
@@ -21,15 +24,18 @@ namespace MarkTogether.Server.Database.Repositories
             {
                 db.Open();
                 return db.ExecuteScalar<string>(
-                    @"INSERT INTO documents (owner_id, title, content, file_path_server)
-                      VALUES (@OwnerId, @Title, @Content, @FilePathServer)
+                    @"INSERT INTO documents (owner_id, share_code, title, content, file_path_server, is_public, public_permission)
+                      VALUES (@OwnerId, @ShareCode, @Title, @Content, @FilePathServer, @IsPublic, @PublicPermission)
                       RETURNING id",
                     new
                     {
                         doc.OwnerId,
+                        doc.ShareCode,
                         doc.Title,
                         doc.Content,
-                        doc.FilePathServer
+                        doc.FilePathServer,
+                        doc.IsPublic,
+                        doc.PublicPermission
                     });
             }
         }
@@ -45,6 +51,48 @@ namespace MarkTogether.Server.Database.Repositories
                 return db.QueryFirstOrDefault<Document>(
                     "SELECT * FROM documents WHERE id = @Id",
                     new { Id = docId });
+            }
+        }
+
+        // [ADDED] Lấy document theo ShareCode
+        public static Document GetByShareCode(string shareCode)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.QueryFirstOrDefault<Document>(
+                    "SELECT * FROM documents WHERE share_code = @Code",
+                    new { Code = shareCode });
+            }
+        }
+
+        // [ADDED] Cập nhật ShareCode cho document
+        public static bool UpdateShareCode(string docId, string shareCode)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE documents
+                      SET share_code = @Code, updated_at = NOW()
+                      WHERE id = @Id",
+                    new { Code = shareCode, Id = docId });
+                return affected > 0;
+            }
+        }
+
+        // [ADDED] Cập nhật chế độ public của document
+        public static bool UpdatePublicSettings(string docId, bool isPublic, string publicPermission)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE documents
+                      SET is_public = @IsPublic, public_permission = @PublicPermission, updated_at = NOW()
+                      WHERE id = @Id",
+                    new { IsPublic = isPublic, PublicPermission = publicPermission, Id = docId });
+                return affected > 0;
             }
         }
 
@@ -149,6 +197,43 @@ namespace MarkTogether.Server.Database.Repositories
                       FROM document_operations
                       WHERE doc_id = @DocId",
                     new { DocId = docId });
+            }
+        }
+
+        // [OT] Save operation history
+        public static void SaveOperation(DocumentOperation op)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                db.Execute(
+                    @"INSERT INTO document_operations (doc_id, user_id, op_type, pos, text, length, revision, applied_at)
+                      VALUES (@DocId, @UserId, @OpType, @Pos, @Text, @Length, @Revision, @AppliedAt)",
+                    new
+                    {
+                        op.DocId,
+                        op.UserId,
+                        op.OpType,
+                        op.Pos,
+                        op.Text,
+                        op.Length,
+                        op.Revision,
+                        AppliedAt = DateTime.UtcNow
+                    });
+            }
+        }
+
+        // [OT] Get operations since a revision
+        public static List<DocumentOperation> GetOpsSince(string docId, int fromRevision)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.Query<DocumentOperation>(
+                    @"SELECT * FROM document_operations 
+                      WHERE doc_id = @DocId AND revision > @FromRevision
+                      ORDER BY revision ASC",
+                    new { DocId = docId, FromRevision = fromRevision }).ToList();
             }
         }
     }
