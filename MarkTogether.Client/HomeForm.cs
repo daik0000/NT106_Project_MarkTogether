@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
+using MarkTogether.Client.UI;
 using MarkTogether.Shared;
 
 namespace MarkTogether.Client
@@ -15,67 +14,89 @@ namespace MarkTogether.Client
     {
         private bool _isLoadingDocuments;
         private bool _isOpeningDocument;
-        private readonly ImageList _rowHeightImageList;
         private List<DocInfo> _allDocuments = new List<DocInfo>();
-        private readonly Font _headerFont;
 
         public HomeForm()
         {
             InitializeComponent();
-
             KeyPreview = true;
             KeyDown += HomeForm_KeyDown;
-
-            _rowHeightImageList = new ImageList
-            {
-                ImageSize = new System.Drawing.Size(1, 24)
-            };
-            listDocuments.SmallImageList = _rowHeightImageList;
-
-            _headerFont = new Font("Segoe UI", 10F, FontStyle.Bold);
-            ApplyRoundedButtonStyle(btnCreateDocument, Color.DodgerBlue, Color.RoyalBlue, 12);
-            ApplyRoundedButtonStyle(btnImportMd, Color.FromArgb(155, 89, 182), Color.FromArgb(142, 68, 173), 12);
-
-            Resize += HomeForm_Resize;
+            Load += HomeForm_Load;
             Shown += HomeForm_Shown;
         }
 
-        private void HomeForm_Resize(object sender, EventArgs e)
+        private void HomeForm_Load(object sender, EventArgs e)
         {
-            ApplyButtonRoundedRegion(btnCreateDocument, 12);
-            ApplyButtonRoundedRegion(btnImportMd, 12);
+            // ─── Apply theme/style ───
+            UiFactory.StylePrimaryButton(btnNew);
+            UiFactory.StyleSecondaryButton(btnImport);
+            UiFactory.StylePrimaryButton(btnJoinCode);
+            UiFactory.StyleDangerButton(btnLogout);
+
+            // Header divider line
+            pnlHeader.Paint += (s, ev) =>
+            {
+                using (var pen = new System.Drawing.Pen(AppTheme.Divider))
+                    ev.Graphics.DrawLine(pen, 0, pnlHeader.Height - 1, pnlHeader.Width, pnlHeader.Height - 1);
+            };
+
+            // pnlJoin: rounded region + focus-aware border (single Paint handler, không dùng StyleAsCard để tránh double-paint)
+            pnlJoin.BackColor = AppTheme.Surface;
+            UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
+            pnlJoin.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
+            txtJoinCode.GotFocus += (s, ev) => { pnlJoin.Tag = "focus"; pnlJoin.Invalidate(); };
+            txtJoinCode.LostFocus += (s, ev) => { pnlJoin.Tag = null; pnlJoin.Invalidate(); };
+            pnlJoin.Paint += (s, ev) =>
+            {
+                bool focused = pnlJoin.Tag as string == "focus";
+                UiFactory.DrawBorder(ev.Graphics, pnlJoin.ClientRectangle,
+                    focused ? AppTheme.BorderFocus : AppTheme.Border,
+                    AppTheme.CornerRadius);
+            };
+
+            // pnlListContainer as card
+            UiFactory.StyleAsCard(pnlListContainer, AppTheme.CornerRadiusLg);
+
+            // ListView styled
+            UiFactory.StyleListView(listDocuments);
+
+            cmbSortMode.SelectedIndex = 0;
+
+            // Căn phải động — tránh Anchor-bug khi panel chưa được siz đúng lúc InitializeComponent
+            pnlHeader.Resize += (s, _) => LayoutHeaderButtons();
+            pnlActionBar.Resize += (s, _) => LayoutActionBarButtons();
+            pnlFilter.Resize += (s, _) => LayoutFilterBar();
+            LayoutHeaderButtons();
+            LayoutActionBarButtons();
+            LayoutFilterBar();
         }
 
         private async void HomeForm_Shown(object sender, EventArgs e)
         {
-            lblWelcome.Text = $"Hello, {SocketClient.Instance.Username}";
-            if (cmbSortMode.SelectedIndex < 0)
-            {
-                cmbSortMode.SelectedIndex = 0;
-            }
+            string username = SocketClient.Instance.Username ?? "user";
+            lblWelcome.Text = $"Xin chào, {username}";
+            LayoutHeaderButtons();
             await LoadDocumentsAsync();
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  Load + bind
+        // ═══════════════════════════════════════════════════════════
         private async Task LoadDocumentsAsync()
         {
-            if (_isLoadingDocuments)
-                return;
-
+            if (_isLoadingDocuments) return;
             try
             {
                 _isLoadingDocuments = true;
                 ToggleLoadingState(true);
-
-                var response = await System.Threading.Tasks.Task.Run(() => SocketClient.Instance.GetDocuments());
+                var response = await Task.Run(() => SocketClient.Instance.GetDocuments());
                 _allDocuments = response?.documents ?? new List<DocInfo>();
                 ApplySortAndBind();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Unable to load documents.\n\nDetails: {ex.Message}",
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                MessageBox.Show($"Không thể tải danh sách tài liệu.\n\nChi tiết: {ex.Message}",
+                    "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -87,24 +108,14 @@ namespace MarkTogether.Client
         private void ApplySortAndBind()
         {
             IEnumerable<DocInfo> docs = _allDocuments ?? new List<DocInfo>();
-            string selectedSort = cmbSortMode.SelectedItem?.ToString() ?? "New to Old";
-
-            switch (selectedSort)
+            string sort = cmbSortMode.SelectedItem?.ToString() ?? "Mới nhất";
+            switch (sort)
             {
-                case "Old to New":
-                    docs = docs.OrderBy(d => d.updateAt);
-                    break;
-                case "A to Z":
-                    docs = docs.OrderBy(d => d.title ?? string.Empty, StringComparer.CurrentCultureIgnoreCase);
-                    break;
-                case "Z to A":
-                    docs = docs.OrderByDescending(d => d.title ?? string.Empty, StringComparer.CurrentCultureIgnoreCase);
-                    break;
-                default:
-                    docs = docs.OrderByDescending(d => d.updateAt);
-                    break;
+                case "Cũ nhất": docs = docs.OrderBy(d => d.updateAt); break;
+                case "A → Z": docs = docs.OrderBy(d => d.title ?? "", StringComparer.CurrentCultureIgnoreCase); break;
+                case "Z → A": docs = docs.OrderByDescending(d => d.title ?? "", StringComparer.CurrentCultureIgnoreCase); break;
+                default: docs = docs.OrderByDescending(d => d.updateAt); break;
             }
-
             BindDocuments(docs.ToList());
         }
 
@@ -112,20 +123,30 @@ namespace MarkTogether.Client
         {
             listDocuments.BeginUpdate();
             listDocuments.Items.Clear();
-
             foreach (var doc in docs)
             {
-                var item = new ListViewItem(doc.title ?? "(Untitled)");
+                var item = new ListViewItem(doc.title ?? "(Không tiêu đề)");
                 item.SubItems.Add(doc.updateAt == default(DateTime)
-                    ? "-"
+                    ? "—"
                     : doc.updateAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm"));
-                item.SubItems.Add(string.IsNullOrWhiteSpace(doc.permission) ? "Owner" : doc.permission);
+                item.SubItems.Add(FormatPermission(doc.permission));
                 item.Tag = doc;
                 listDocuments.Items.Add(item);
             }
-
             listDocuments.EndUpdate();
-            lblCount.Text = $"Total documents: {listDocuments.Items.Count}";
+            lblCount.Text = $"{listDocuments.Items.Count} tài liệu";
+            LayoutFilterBar();
+        }
+
+        private static string FormatPermission(string p)
+        {
+            switch ((p ?? "").ToLowerInvariant())
+            {
+                case "owner": return "Chủ sở hữu";
+                case "editor": return "Chỉnh sửa";
+                case "viewer": return "Xem";
+                default: return p ?? "—";
+            }
         }
 
         private async void HomeForm_KeyDown(object sender, KeyEventArgs e)
@@ -138,27 +159,25 @@ namespace MarkTogether.Client
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  Actions
+        // ═══════════════════════════════════════════════════════════
         private async void btnCreateDocument_Click(object sender, EventArgs e)
         {
             using (var dlg = new CreateDocumentForm())
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK)
-                    return;
-
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
                     ToggleLoadingState(true);
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(dlg.DocumentTitle));
                     await LoadDocumentsAsync();
-
                     OpenDocumentEditor(created.docID, created.title, created.content);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Unable to create a new document.\n\nDetails: {ex.Message}",
-                        "Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    MessageBox.Show($"Không thể tạo tài liệu mới.\n\nChi tiết: {ex.Message}",
+                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 finally
                 {
@@ -171,33 +190,25 @@ namespace MarkTogether.Client
         {
             using (var openDialog = new OpenFileDialog())
             {
-                openDialog.Title = "Choose a Markdown file to import";
-                openDialog.Filter = "Markdown files (*.md)|*.md|All files (*.*)|*.*";
+                openDialog.Title = "Chọn file Markdown để import";
+                openDialog.Filter = "Markdown (*.md)|*.md|Tất cả (*.*)|*.*";
                 openDialog.CheckFileExists = true;
-                openDialog.Multiselect = false;
-
-                if (openDialog.ShowDialog(this) != DialogResult.OK)
-                    return;
+                if (openDialog.ShowDialog(this) != DialogResult.OK) return;
 
                 try
                 {
                     ToggleLoadingState(true);
-
                     string filePath = openDialog.FileName;
                     string content = await Task.Run(() => File.ReadAllText(filePath));
                     string title = Path.GetFileNameWithoutExtension(filePath);
-
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(title, content));
                     await LoadDocumentsAsync();
-
                     OpenDocumentEditor(created.docID, created.title, created.content);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Unable to import markdown file.\n\nDetails: {ex.Message}",
-                        "Error",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    MessageBox.Show($"Không thể import file.\n\nChi tiết: {ex.Message}",
+                        "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 finally
                 {
@@ -218,19 +229,13 @@ namespace MarkTogether.Client
 
         private async Task OpenSelectedDocumentAsync()
         {
-            if (_isOpeningDocument)
-                return;
-
-            if (listDocuments.SelectedItems.Count == 0)
-                return;
+            if (_isOpeningDocument) return;
+            if (listDocuments.SelectedItems.Count == 0) return;
 
             var selectedDoc = listDocuments.SelectedItems[0].Tag as DocInfo;
             if (selectedDoc == null || string.IsNullOrWhiteSpace(selectedDoc.docID))
             {
-                MessageBox.Show("Cannot identify the selected document.",
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                MessageBox.Show("Không xác định được tài liệu được chọn.", "Lỗi");
                 return;
             }
 
@@ -243,10 +248,8 @@ namespace MarkTogether.Client
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Unable to open document.\n\nDetails: {ex.Message}",
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                MessageBox.Show($"Không thể mở tài liệu.\n\nChi tiết: {ex.Message}",
+                    "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -259,107 +262,120 @@ namespace MarkTogether.Client
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
-                MessageBox.Show("Invalid docID. Cannot open this document.",
-                    "Error",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                MessageBox.Show("Không thể mở tài liệu (thiếu mã ID).", "Lỗi");
                 return;
             }
-
             var editor = new TypeRenderForm(docId, title, content);
             editor.Show(this);
         }
 
         private void ToggleLoadingState(bool isLoading)
         {
-            btnCreateDocument.Enabled = !isLoading;
-            btnImportMd.Enabled = !isLoading;
+            btnNew.Enabled = !isLoading;
+            btnImport.Enabled = !isLoading;
             cmbSortMode.Enabled = !isLoading;
             listDocuments.Enabled = !isLoading;
+            btnLogout.Enabled = !isLoading;
+            btnJoinCode.Enabled = !isLoading;
+            txtJoinCode.Enabled = !isLoading;
         }
 
-        private void listDocuments_DrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
+        // ═══════════════════════════════════════════════════════════
+        //  LOGOUT
+        // ═══════════════════════════════════════════════════════════
+        private async void btnLogout_Click(object sender, EventArgs e)
         {
-            using (var gradientBrush = new LinearGradientBrush(
-                e.Bounds,
-                Color.FromArgb(198, 225, 255),
-                Color.FromArgb(228, 241, 255),
-                LinearGradientMode.Vertical))
-            using (var borderPen = new Pen(Color.FromArgb(120, 166, 217)))
-            using (var accentPen = new Pen(Color.FromArgb(70, 130, 180), 2f))
+            var confirm = MessageBox.Show("Bạn có chắc muốn đăng xuất?", "Đăng xuất",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirm != DialogResult.Yes) return;
+
+            try
             {
-                e.Graphics.FillRectangle(gradientBrush, e.Bounds);
-                e.Graphics.DrawRectangle(borderPen, e.Bounds);
-                e.Graphics.DrawLine(accentPen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+                ToggleLoadingState(true);
+                await Task.Run(() => SocketClient.Instance.Logout());
             }
+            catch { }
+            finally { ToggleLoadingState(false); }
 
-            TextRenderer.DrawText(
-                e.Graphics,
-                e.Header.Text,
-                _headerFont,
-                e.Bounds,
-                Color.FromArgb(20, 50, 90),
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            var login = new LoginForm();
+            login.Show();
+            this.Close();
         }
 
-        private void ApplyRoundedButtonStyle(Button button, Color backColor, Color borderColor, int radius)
+        // ═══════════════════════════════════════════════════════════
+        //  JOIN BY CODE
+        // ═══════════════════════════════════════════════════════════
+        private async void btnJoinCode_Click(object sender, EventArgs e)
         {
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.BorderColor = borderColor;
-            button.BackColor = backColor;
-            button.ForeColor = Color.White;
-            button.Cursor = Cursors.Hand;
-
-            ApplyButtonRoundedRegion(button, radius);
-            button.Resize += (s, e) => ApplyButtonRoundedRegion(button, radius);
-        }
-
-        private void ApplyButtonRoundedRegion(Button button, int radius)
-        {
-            if (button.Width <= 0 || button.Height <= 0)
+            string code = (txtJoinCode.Text ?? "").Trim();
+            if (string.IsNullOrEmpty(code))
+            {
+                MessageBox.Show("Vui lòng nhập mã chia sẻ.", "Tham gia",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
+            }
 
-            using (var path = CreateRoundedRectanglePath(button.ClientRectangle, radius))
+            try
             {
-                button.Region = new Region(path);
+                ToggleLoadingState(true);
+                var resp = await Task.Run(() => SocketClient.Instance.JoinByShareCode(code));
+                if (!resp.success)
+                {
+                    MessageBox.Show(resp.message ?? "Không thể tham gia tài liệu.", "Tham gia",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                txtJoinCode.Clear();
+                await LoadDocumentsAsync();
+                OpenDocumentEditor(resp.docID, resp.title, resp.content);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi: {ex.Message}", "Tham gia",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ToggleLoadingState(false);
             }
         }
 
-        private GraphicsPath CreateRoundedRectanglePath(Rectangle bounds, int radius)
+        // ═══════════════════════════════════════════════════════════
+        //  LAYOUT — căn phải động (tránh WinForms Anchor-bug với nested panel)
+        // ═══════════════════════════════════════════════════════════
+        private void LayoutHeaderButtons()
         {
-            int diameter = Math.Max(1, radius * 2);
-            var arc = new Rectangle(bounds.Location, new Size(diameter, diameter));
-            var path = new GraphicsPath();
+            if (pnlHeader.ClientSize.Width <= 0) return;
+            int right = pnlHeader.ClientSize.Width - AppTheme.SpaceXl;
+            int btnY = (pnlHeader.Height - AppTheme.ButtonHeight) / 2;
+            int gap = AppTheme.SpaceSm;
 
-            path.AddArc(arc, 180, 90);
-            arc.X = bounds.Right - diameter;
-            path.AddArc(arc, 270, 90);
-            arc.Y = bounds.Bottom - diameter;
-            path.AddArc(arc, 0, 90);
-            arc.X = bounds.Left;
-            path.AddArc(arc, 90, 90);
-            path.CloseFigure();
-
-            return path;
+            btnLogout.Location = new System.Drawing.Point(right - btnLogout.Width, btnY);
+            right -= btnLogout.Width + gap * 2;
+            lblWelcome.Location = new System.Drawing.Point(
+                Math.Max(lblBrand.Right + AppTheme.SpaceLg, right - lblWelcome.PreferredWidth),
+                (pnlHeader.Height - lblWelcome.Height) / 2);
         }
 
-        private void listDocuments_DrawItem(object sender, DrawListViewItemEventArgs e)
+        private void LayoutActionBarButtons()
         {
-            e.DrawDefault = true;
+            if (pnlActionBar.ClientSize.Width <= 0) return;
+            int right = pnlActionBar.ClientSize.Width;
+            int btnY = 16;
+            int gap = AppTheme.SpaceSm;
+
+            btnNew.Location = new System.Drawing.Point(right - btnNew.Width, btnY);
+            right -= btnNew.Width + gap;
+            btnImport.Location = new System.Drawing.Point(right - btnImport.Width, btnY);
         }
 
-        private void listDocuments_DrawSubItem(object sender, DrawListViewSubItemEventArgs e)
+        private void LayoutFilterBar()
         {
-            e.DrawDefault = true;
+            if (pnlFilter.ClientSize.Width <= 0) return;
+            int right = pnlFilter.ClientSize.Width - AppTheme.SpaceMd;
+            lblCount.Location = new System.Drawing.Point(
+                right - lblCount.PreferredWidth,
+                (pnlFilter.Height - lblCount.Height) / 2);
         }
-
-        protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            _headerFont?.Dispose();
-            _rowHeightImageList?.Dispose();
-            base.OnFormClosed(e);
-        }
-
     }
 }

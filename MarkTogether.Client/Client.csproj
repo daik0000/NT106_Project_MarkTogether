@@ -105,6 +105,26 @@
       <DependentUpon>CreateDocumentForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Network\SocketClient.cs" />
+    <Compile Include="UI\AppTheme.cs" />
+    <Compile Include="UI\UiFactory.cs" />
+    <Compile Include="NewCommentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="NewCommentForm.Designer.cs">
+      <DependentUpon>NewCommentForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="ShareDocumentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ShareDocumentForm.Designer.cs">
+      <DependentUpon>ShareDocumentForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="VersionHistoryForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="VersionHistoryForm.Designer.cs">
+      <DependentUpon>VersionHistoryForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="RegisterForm.cs">
       <SubType>Form</SubType>
     </Compile>

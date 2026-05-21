@@ -83,20 +83,28 @@
   <ItemGroup>
     <Compile Include="Database\DbConnectionFactory.cs" />
     <Compile Include="Database\Models\ActiveSession.cs" />
+    <Compile Include="Database\Models\ChatMessage.cs" />
+    <Compile Include="Database\Models\Comment.cs" />
     <Compile Include="Database\Models\Document.cs" />
     <Compile Include="Database\Models\DocumentOperation.cs" />
     <Compile Include="Database\Models\DocumentShare.cs" />
     <Compile Include="Database\Models\DocumentVersion.cs" />
     <Compile Include="Database\Models\Image.cs" />
     <Compile Include="Database\Models\User.cs" />
+    <Compile Include="Database\Repositories\ChatRepository.cs" />
+    <Compile Include="Database\Repositories\CommentRepository.cs" />
     <Compile Include="Database\Repositories\DocumentRepository.cs" />
     <Compile Include="Database\Repositories\DocumentShareRepository.cs" />
     <Compile Include="Database\Repositories\DocumentVersionRepository.cs" />
+    <Compile Include="Database\Repositories\ImageRepository.cs" />
     <Compile Include="Database\Repositories\UserRepository.cs" />
     <Compile Include="Network\ClientHandler.cs" />
     <Compile Include="Network\SessionManager.cs" />
     <Compile Include="Network\SocketServer.cs" />
+    <Compile Include="Services\AISuggestionService.cs" />
     <Compile Include="Services\AuthService.cs" />
+    <Compile Include="Services\ImageStorageService.cs" />
+    <Compile Include="Services\ShareCodeGenerator.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
