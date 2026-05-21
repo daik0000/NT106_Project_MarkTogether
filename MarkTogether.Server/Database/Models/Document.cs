@@ -11,6 +11,9 @@ namespace MarkTogether.Server.Database.Models
         public int OwnerId { get; set; }
         public string Title { get; set; }
         public string Content { get; set; }
+        public string ShareCode { get; set; }
+        public bool IsPublic { get; set; } // [ADDED]
+        public string PublicPermission { get; set; } // [ADDED]
         public string FilePathServer { get; set; }
         public string ShareCode { get; set; }
         public DateTime CreatedAt { get; set; }

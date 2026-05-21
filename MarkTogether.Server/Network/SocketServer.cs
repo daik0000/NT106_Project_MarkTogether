@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using MarkTogether.Shared;
 
 namespace MarkTogether.Server.Network
 {
@@ -14,6 +17,10 @@ namespace MarkTogether.Server.Network
         private TcpListener _listener;
         private readonly int _port;
         private bool _running;
+
+        // [ADDED] Track active client handlers
+        private static readonly List<ClientHandler> _activeHandlers = new List<ClientHandler>();
+        private static readonly object _handlersLock = new object();
 
         public SocketServer(int port = 5000)
         {
@@ -42,7 +49,27 @@ namespace MarkTogether.Server.Network
 
                     // Tạo handler riêng cho client này, xử lý song song
                     var handler = new ClientHandler(tcpClient);
-                    Task.Run(() => handler.ProcessAsync());
+                    
+                    // [ADDED] Register handler
+                    lock (_handlersLock)
+                    {
+                        _activeHandlers.Add(handler);
+                    }
+
+                    Task.Run(() => {
+                        try
+                        {
+                            handler.ProcessAsync();
+                        }
+                        finally
+                        {
+                            // [ADDED] Unregister handler when done
+                            lock (_handlersLock)
+                            {
+                                _activeHandlers.Remove(handler);
+                            }
+                        }
+                    });
                 }
                 catch (ObjectDisposedException)
                 {
@@ -53,6 +80,50 @@ namespace MarkTogether.Server.Network
                     if (_running)
                         Console.WriteLine($"[Server] Lỗi accept: {ex.Message}");
                 }
+            }
+        }
+
+        // [ADDED] Broadcast to other clients opening the same document
+        public static void BroadcastToOthers(string docId, int senderUserId, Packet broadcastPacket)
+        {
+            List<ClientHandler> targets;
+            lock (_handlersLock)
+            {
+                // [DEBUG] Log all active handlers and their currentDocId
+                Console.WriteLine($"[Broadcast] Sending from user={senderUserId} docId={docId}");
+                Console.WriteLine($"[Broadcast] Total active handlers: {_activeHandlers.Count}");
+                foreach (var h in _activeHandlers)
+                {
+                    Console.WriteLine($"[Broadcast]   handler userId={h.UserId} currentDocId={h.CurrentDocId ?? "null"}");
+                }
+
+                targets = _activeHandlers
+                    .Where(h => h.CurrentDocId == docId && h.UserId != senderUserId)
+                    .ToList();
+
+                Console.WriteLine($"[Broadcast] Targets found: {targets.Count}");
+            }
+
+            foreach (var handler in targets)
+            {
+                try
+                {
+                    handler.SendPacket(broadcastPacket);
+                    Console.WriteLine($"[Broadcast] Sent to user={handler.UserId}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Broadcast] Error sending to user {handler.UserId}: {ex.Message}");
+                }
+            }
+        }
+
+        // [ADDED] Get copy of active handlers
+        public static List<ClientHandler> GetActiveHandlers()
+        {
+            lock (_handlersLock)
+            {
+                return _activeHandlers.ToList();
             }
         }
 
