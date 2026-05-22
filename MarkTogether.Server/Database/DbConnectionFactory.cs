@@ -1,3 +1,4 @@
+using System;
 using System.Configuration;
 using System.Data;
 using Npgsql;
@@ -6,12 +7,16 @@ namespace MarkTogether.Server.Database
 {
     /// <summary>
     /// Factory tạo kết nối tới PostgreSQL.
-    /// Connection string được đọc từ App.config.
+    /// Production ưu tiên biến môi trường MARKTOGETHER_DB_CONNECTION để tránh hardcode secret.
+    /// App.config vẫn được giữ làm fallback nhằm bảo toàn backward compatibility cho môi trường dev hiện tại.
     /// </summary>
     public static class DbConnectionFactory
     {
+        private const string DbConnectionEnvName = "MARKTOGETHER_DB_CONNECTION";
+
         private static readonly string _connectionString =
-            ConfigurationManager.ConnectionStrings["MarkTogetherDb"]?.ConnectionString
+            Environment.GetEnvironmentVariable(DbConnectionEnvName)
+            ?? ConfigurationManager.ConnectionStrings["MarkTogetherDb"]?.ConnectionString
             ?? "Host=localhost;Port=5432;Database=myapp_db;Username=postgres;Password=123";
 
         /// <summary>
