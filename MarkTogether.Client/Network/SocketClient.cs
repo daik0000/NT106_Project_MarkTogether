@@ -334,6 +334,14 @@ namespace MarkTogether.Client.Network
             catch { /* fire-and-forget */ }
         }
 
+        public Payload_DOC_DELETE_Response DeleteDocument(string docId)
+        {
+            EnsureAuthenticated();
+            var response = Request(MessageType.DOC_DELETE,
+                new Payload_DOC_DELETE_Request { docID = docId });
+            return ExtractOrThrow<Payload_DOC_DELETE_Response>(response, MessageType.DOC_DELETE);
+        }
+
         public void SaveDocument(string docId, string content)
         {
             EnsureAuthenticated();
@@ -540,7 +548,13 @@ namespace MarkTogether.Client.Network
         }
 
         // ─── AI ───
-        public Payload_AI_Response AskAI(string mode, string userPrompt, string contextText, string docId = null)
+        public Payload_AI_Response AskAI(
+            string mode, string userPrompt, string contextText,
+            string docId = null,
+            string apiKey = null, string model = null, string provider = null,
+            string actionMode = null,
+            string documentText = null,
+            int selectionStart = 0, int selectionEnd = 0, int cursorPosition = 0)
         {
             EnsureAuthenticated();
             var response = Request(MessageType.AI_REQUEST,
@@ -549,9 +563,17 @@ namespace MarkTogether.Client.Network
                     docID = docId,
                     mode = mode,
                     userPrompt = userPrompt,
-                    contextText = contextText
+                    contextText = contextText,
+                    apiKey = apiKey,
+                    model = model,
+                    provider = provider,
+                    actionMode = actionMode,
+                    documentText = documentText,
+                    selectionStart = selectionStart,
+                    selectionEnd = selectionEnd,
+                    cursorPosition = cursorPosition
                 },
-                timeoutMs: 45000);
+                timeoutMs: 60000);
             return ExtractOrThrow<Payload_AI_Response>(response, MessageType.AI_RESPONSE);
         }
 

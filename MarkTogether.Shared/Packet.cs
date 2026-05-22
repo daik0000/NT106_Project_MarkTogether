@@ -25,7 +25,14 @@ namespace MarkTogether.Shared
         DOC_SHARE_UPDATE,
         DOC_SHARE_REVOKE,
         DOC_SHARE_REGEN_CODE,
+        DOC_CREATE_LINK,
+        DOC_REVOKE_LINK,
+        DOC_JOIN_LINK,
+        DOC_SET_VISIBILITY,
+        DOC_GET_PUBLIC_LIST,
         DOC_RELOAD_BROADCAST,
+        DOC_SEARCH,
+        DOC_DELETE,
 
         // ─── Real-time edit ──────────────────
         OP_INSERT,
@@ -162,6 +169,8 @@ namespace MarkTogether.Shared
         public int revision { get; set; }
         public string permission { get; set; }
         public string shareCode { get; set; }
+        public string visibility { get; set; }
+        public string publicPermission { get; set; }
     }
 
     public class Payload_DOC_SAVE_Request
@@ -270,6 +279,129 @@ namespace MarkTogether.Shared
         public bool success { get; set; }
         public string message { get; set; }
         public string shareCode { get; set; }
+    }
+
+    public class Payload_DOC_CREATE_LINK_Request
+    {
+        public string docID { get; set; }
+        public string permission { get; set; } = "viewer";
+        public int expiresInHours { get; set; }
+        public int maxUses { get; set; }
+    }
+
+    public class Payload_DOC_CREATE_LINK_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public string linkId { get; set; }
+        public string linkToken { get; set; }
+        public string permission { get; set; }
+        public DateTime? expiresAt { get; set; }
+        public int? maxUses { get; set; }
+    }
+
+    public class Payload_DOC_REVOKE_LINK_Request
+    {
+        public string linkToken { get; set; }
+    }
+
+    public class Payload_DOC_REVOKE_LINK_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+    }
+
+    public class Payload_DOC_JOIN_LINK_Request
+    {
+        public string linkToken { get; set; }
+    }
+
+    public class Payload_DOC_JOIN_LINK_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public string docID { get; set; }
+        public string title { get; set; }
+        public string content { get; set; }
+        public int revision { get; set; }
+        public string permission { get; set; }
+    }
+
+    public class Payload_DOC_SET_VISIBILITY_Request
+    {
+        public string docID { get; set; }
+        public string visibility { get; set; }
+        public string publicPermission { get; set; }
+    }
+
+    public class Payload_DOC_SET_VISIBILITY_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public string docID { get; set; }
+        public string visibility { get; set; }
+        public string publicPermission { get; set; }
+    }
+
+    public class Payload_DOC_GET_PUBLIC_LIST_Request
+    {
+        public int page { get; set; } = 1;
+        public int limit { get; set; } = 20;
+    }
+
+    public class PublicDocumentDto
+    {
+        public string docID { get; set; }
+        public string title { get; set; }
+        public int ownerId { get; set; }
+        public string ownerUsername { get; set; }
+        public DateTime updatedAt { get; set; }
+        public string publicPermission { get; set; }
+    }
+
+    public class Payload_DOC_GET_PUBLIC_LIST_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public int page { get; set; }
+        public int limit { get; set; }
+        public int total { get; set; }
+        public List<PublicDocumentDto> documents { get; set; } = new List<PublicDocumentDto>();
+    }
+
+    public class Payload_DOC_SEARCH_Request
+    {
+        public string query { get; set; }
+        public string searchBy { get; set; } = "all";
+    }
+
+    public class DocumentSearchResultDto
+    {
+        public string docID { get; set; }
+        public string title { get; set; }
+        public string ownerUsername { get; set; }
+        public string visibility { get; set; }
+        public string permission { get; set; }
+        public DateTime updatedAt { get; set; }
+    }
+
+    public class Payload_DOC_SEARCH_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public List<DocumentSearchResultDto> results { get; set; } = new List<DocumentSearchResultDto>();
+    }
+
+    public class Payload_DOC_DELETE_Request
+    {
+        public string docID { get; set; }
+    }
+
+    public class Payload_DOC_DELETE_Response
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public string docID { get; set; }
     }
 
     public class Payload_DOC_RELOAD_BROADCAST
@@ -517,6 +649,18 @@ namespace MarkTogether.Shared
         public string mode { get; set; }        // "chat" | "summarize" | "continue" | "translate"
         public string userPrompt { get; set; }
         public string contextText { get; set; }
+
+        // Cấu hình AI động phía client
+        public string provider { get; set; }    // "gemini" mặc định, reserved cho future
+        public string model { get; set; }       // ví dụ "gemini-2.5-flash"
+        public string apiKey { get; set; }      // null/rỗng → server fallback App.config
+
+        // Editor context cho Action Mode
+        public string actionMode { get; set; }  // "text" (mặc định) | "edit"
+        public string documentText { get; set; }
+        public int selectionStart { get; set; }
+        public int selectionEnd { get; set; }
+        public int cursorPosition { get; set; }
     }
 
     public class Payload_AI_Response
@@ -524,6 +668,10 @@ namespace MarkTogether.Shared
         public bool success { get; set; }
         public string message { get; set; }
         public string text { get; set; }
+
+        // "text" | "edit_plan"
+        public string kind { get; set; }
+        public string editPlanJson { get; set; }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -554,6 +702,8 @@ namespace MarkTogether.Shared
         public string docID { get; set; }
         public string title { get; set; }
         public string permission { get; set; }
+        public string visibility { get; set; }
+        public string publicPermission { get; set; }
         public DateTime updateAt { get; set; }
     }
 

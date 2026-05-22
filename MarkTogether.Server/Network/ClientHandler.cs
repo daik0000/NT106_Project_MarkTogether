@@ -4,9 +4,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using MarkTogether.Server.Database.Models;
 using MarkTogether.Server.Database.Repositories;
+using MarkTogether.Server.OT;
 using MarkTogether.Server.Services;
 using MarkTogether.Shared;
 
@@ -83,6 +85,13 @@ namespace MarkTogether.Server.Network
                         case MessageType.DOC_SHARE_UPDATE: HandleDocShareUpdate(packet); break;
                         case MessageType.DOC_SHARE_REVOKE: HandleDocShareRevoke(packet); break;
                         case MessageType.DOC_SHARE_REGEN_CODE: HandleDocShareRegenCode(packet); break;
+                        case MessageType.DOC_CREATE_LINK: HandleDocCreateLink(packet); break;
+                        case MessageType.DOC_REVOKE_LINK: HandleDocRevokeLink(packet); break;
+                        case MessageType.DOC_JOIN_LINK: HandleDocJoinLink(packet); break;
+                        case MessageType.DOC_SET_VISIBILITY: HandleDocSetVisibility(packet); break;
+                        case MessageType.DOC_GET_PUBLIC_LIST: HandleDocGetPublicList(packet); break;
+                        case MessageType.DOC_SEARCH: HandleDocSearch(packet); break;
+                        case MessageType.DOC_DELETE: HandleDocDelete(packet); break;
 
                         case MessageType.OP_INSERT: HandleOpInsert(packet); break;
                         case MessageType.OP_DELETE: HandleOpDelete(packet); break;
@@ -169,10 +178,11 @@ namespace MarkTogether.Server.Network
 
         /// <summary>
         /// Trả permission của user trên doc, hoặc null nếu không có quyền.
+        /// Permission được resolve tập trung qua RBAC service để tránh lệch logic giữa các handler.
         /// </summary>
         private string GetPermission(string docId, int userId)
         {
-            return DocumentShareRepository.GetPermission(docId, userId);
+            return DocumentPermissionService.ResolvePermission(docId, userId);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -244,6 +254,8 @@ namespace MarkTogether.Server.Network
                     docID = d.Id,
                     title = d.Title,
                     permission = d.Permission,
+                    visibility = DocumentPermissionService.NormalizeVisibility(d.Visibility),
+                    publicPermission = DocumentPermissionService.NormalizePublicPermission(d.PublicPermission),
                     updateAt = d.UpdatedAt
                 }).ToList()
             };
@@ -298,10 +310,10 @@ namespace MarkTogether.Server.Network
             if (document == null) { ReplyError(packet, "Không tìm thấy tài liệu."); return; }
 
             string permission = GetPermission(docId, currentUserId);
-            if (permission == null) { ReplyError(packet, "Bạn không có quyền truy cập tài liệu này."); return; }
+            if (!DocumentPermissionService.CanRead(permission)) { ReplyError(packet, "Bạn không có quyền truy cập tài liệu này."); return; }
 
-            // Owner thấy share code, viewer/editor không cần
-            string shareCode = permission == "owner" ? document.ShareCode : null;
+            // Owner thấy share code, viewer/editor/commenter không cần
+            string shareCode = DocumentPermissionService.IsOwner(permission) ? document.ShareCode : null;
 
             SessionManager.JoinRoom(docId, this);
 
@@ -312,7 +324,9 @@ namespace MarkTogether.Server.Network
                 content = document.Content ?? string.Empty,
                 revision = DocumentRepository.GetCurrentRevision(docId),
                 permission = permission,
-                shareCode = shareCode
+                shareCode = shareCode,
+                visibility = DocumentPermissionService.NormalizeVisibility(document.Visibility),
+                publicPermission = DocumentPermissionService.NormalizePublicPermission(document.PublicPermission)
             });
         }
 
@@ -347,9 +361,10 @@ namespace MarkTogether.Server.Network
             if (document == null) { ReplyError(packet, "Không tìm thấy tài liệu."); return; }
 
             string permission = GetPermission(docId, currentUserId);
-            if (permission != "owner" && permission != "editor")
+            if (!DocumentPermissionService.CanEdit(permission))
             {
                 ReplyError(packet, "Bạn không có quyền lưu tài liệu này.");
+                Console.WriteLine($"[RBAC] DOC_SAVE denied user={currentUserId} doc={docId} permission={permission ?? "none"}");
                 return;
             }
 
@@ -378,6 +393,52 @@ namespace MarkTogether.Server.Network
             }
 
             ReplyOk(packet, "Lưu tài liệu thành công");
+        }
+
+        private void HandleDocDelete(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var payload = packet.GetPayload<Payload_DOC_DELETE_Request>();
+            if (payload == null || string.IsNullOrWhiteSpace(payload.docID))
+            {
+                Reply(packet, MessageType.DOC_DELETE, new Payload_DOC_DELETE_Response
+                { success = false, message = "docID không hợp lệ." });
+                return;
+            }
+
+            string docId = payload.docID.Trim();
+            string permission = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.IsOwner(permission))
+            {
+                Reply(packet, MessageType.DOC_DELETE, new Payload_DOC_DELETE_Response
+                { success = false, docID = docId, message = "Chỉ chủ sở hữu mới được xóa tài liệu." });
+                Console.WriteLine($"[RBAC] DOC_DELETE denied user={currentUserId} doc={docId} permission={permission ?? "none"}");
+                return;
+            }
+
+            bool deleted = DocumentRepository.SoftDelete(docId, currentUserId);
+            if (!deleted)
+            {
+                Reply(packet, MessageType.DOC_DELETE, new Payload_DOC_DELETE_Response
+                { success = false, docID = docId, message = "Xóa tài liệu thất bại hoặc tài liệu đã bị xóa." });
+                return;
+            }
+
+            SessionManager.BroadcastToRoom(docId, Packet.Create(MessageType.DOC_RELOAD_BROADCAST, new Payload_DOC_RELOAD_BROADCAST
+            {
+                docID = docId,
+                reason = "deleted",
+                revision = DocumentRepository.GetCurrentRevision(docId)
+            }));
+
+            Reply(packet, MessageType.DOC_DELETE, new Payload_DOC_DELETE_Response
+            {
+                success = true,
+                docID = docId,
+                message = "Đã xóa tài liệu."
+            });
         }
 
         private void TrimVersions(string docId, int keep)
@@ -417,11 +478,14 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            var doc = DocumentRepository.GetById(p.docID);
-            if (doc == null || doc.OwnerId != currentUserId)
+            string docId = p.docID.Trim();
+            var doc = DocumentRepository.GetById(docId);
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (doc == null || !DocumentPermissionService.CanManage(requesterPermission))
             {
                 Reply(packet, MessageType.DOC_SHARE, new Payload_DOC_SHARE_Response
                 { success = false, message = "Chỉ chủ sở hữu mới được chia sẻ." });
+                Console.WriteLine($"[RBAC] DOC_SHARE denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
                 return;
             }
 
@@ -439,19 +503,18 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            string permission = (p.permission ?? "viewer").ToLowerInvariant();
-            if (permission != "viewer" && permission != "editor") permission = "viewer";
+            string permission = DocumentPermissionService.NormalizeSharePermission(p.permission);
 
             try
             {
                 // Nếu đã có share rồi → update permission
-                if (DocumentShareRepository.GetPermission(p.docID, target.Id) != null)
+                if (DocumentShareRepository.GetPermission(docId, target.Id) != null)
                 {
-                    DocumentShareRepository.UpdatePermission(p.docID, target.Id, permission);
+                    DocumentShareRepository.UpdatePermission(docId, target.Id, permission);
                 }
                 else
                 {
-                    DocumentShareRepository.ShareDocument(p.docID, target.Id, permission);
+                    DocumentShareRepository.ShareDocument(docId, target.Id, permission);
                 }
 
                 Reply(packet, MessageType.DOC_SHARE, new Payload_DOC_SHARE_Response
@@ -473,16 +536,20 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID))
             { ReplyError(packet, "docID không hợp lệ."); return; }
 
-            var doc = DocumentRepository.GetById(p.docID);
+            string docId = p.docID.Trim();
+            var doc = DocumentRepository.GetById(docId);
             if (doc == null) { ReplyError(packet, "Không tìm thấy tài liệu."); return; }
-            if (doc.OwnerId != currentUserId)
+
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanManage(requesterPermission))
             {
                 Reply(packet, MessageType.DOC_SHARE_LIST, new Payload_DOC_SHARE_LIST_Response
                 { success = false, message = "Chỉ chủ sở hữu mới xem được danh sách." });
+                Console.WriteLine($"[RBAC] DOC_SHARE_LIST denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
                 return;
             }
 
-            var rows = DocumentShareRepository.GetCollaborators(p.docID);
+            var rows = DocumentShareRepository.GetCollaborators(docId);
             var collaborators = new List<CollaboratorDto>();
             foreach (var r in rows)
             {
@@ -500,7 +567,7 @@ namespace MarkTogether.Server.Network
             Reply(packet, MessageType.DOC_SHARE_LIST, new Payload_DOC_SHARE_LIST_Response
             {
                 success = true,
-                docID = p.docID,
+                docID = docId,
                 shareCode = doc.ShareCode,
                 collaborators = collaborators
             });
@@ -514,18 +581,27 @@ namespace MarkTogether.Server.Network
             var p = packet.GetPayload<Payload_DOC_SHARE_UPDATE_Request>();
             if (p == null) { ReplyError(packet, "Payload không hợp lệ."); return; }
 
-            var doc = DocumentRepository.GetById(p.docID);
-            if (doc == null || doc.OwnerId != currentUserId)
+            if (string.IsNullOrWhiteSpace(p.docID) || p.targetUserId <= 0)
             {
                 Reply(packet, MessageType.DOC_SHARE_UPDATE, new Payload_DOC_SHARE_UPDATE_Response
-                { success = false, message = "Không có quyền." });
+                { success = false, message = "Tham số không hợp lệ." });
                 return;
             }
 
-            string perm = (p.newPermission ?? "viewer").ToLowerInvariant();
-            if (perm != "viewer" && perm != "editor") perm = "viewer";
+            string docId = p.docID.Trim();
+            var doc = DocumentRepository.GetById(docId);
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (doc == null || !DocumentPermissionService.CanManage(requesterPermission))
+            {
+                Reply(packet, MessageType.DOC_SHARE_UPDATE, new Payload_DOC_SHARE_UPDATE_Response
+                { success = false, message = "Không có quyền." });
+                Console.WriteLine($"[RBAC] DOC_SHARE_UPDATE denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
+                return;
+            }
 
-            bool ok = DocumentShareRepository.UpdatePermission(p.docID, p.targetUserId, perm);
+            string perm = DocumentPermissionService.NormalizeSharePermission(p.newPermission);
+
+            bool ok = DocumentShareRepository.UpdatePermission(docId, p.targetUserId, perm);
             Reply(packet, MessageType.DOC_SHARE_UPDATE, new Payload_DOC_SHARE_UPDATE_Response
             {
                 success = ok,
@@ -541,15 +617,25 @@ namespace MarkTogether.Server.Network
             var p = packet.GetPayload<Payload_DOC_SHARE_REVOKE_Request>();
             if (p == null) { ReplyError(packet, "Payload không hợp lệ."); return; }
 
-            var doc = DocumentRepository.GetById(p.docID);
-            if (doc == null || doc.OwnerId != currentUserId)
+            if (string.IsNullOrWhiteSpace(p.docID) || p.targetUserId <= 0)
             {
                 Reply(packet, MessageType.DOC_SHARE_REVOKE, new Payload_DOC_SHARE_REVOKE_Response
-                { success = false, message = "Không có quyền." });
+                { success = false, message = "Tham số không hợp lệ." });
                 return;
             }
 
-            bool ok = DocumentShareRepository.RevokeAccess(p.docID, p.targetUserId);
+            string docId = p.docID.Trim();
+            var doc = DocumentRepository.GetById(docId);
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (doc == null || !DocumentPermissionService.CanManage(requesterPermission))
+            {
+                Reply(packet, MessageType.DOC_SHARE_REVOKE, new Payload_DOC_SHARE_REVOKE_Response
+                { success = false, message = "Không có quyền." });
+                Console.WriteLine($"[RBAC] DOC_SHARE_REVOKE denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
+                return;
+            }
+
+            bool ok = DocumentShareRepository.RevokeAccess(docId, p.targetUserId);
             Reply(packet, MessageType.DOC_SHARE_REVOKE, new Payload_DOC_SHARE_REVOKE_Response
             {
                 success = ok,
@@ -566,16 +652,19 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID))
             { ReplyError(packet, "docID không hợp lệ."); return; }
 
-            var doc = DocumentRepository.GetById(p.docID);
-            if (doc == null || doc.OwnerId != currentUserId)
+            string docId = p.docID.Trim();
+            var doc = DocumentRepository.GetById(docId);
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (doc == null || !DocumentPermissionService.CanManage(requesterPermission))
             {
                 Reply(packet, MessageType.DOC_SHARE_REGEN_CODE, new Payload_DOC_SHARE_REGEN_CODE_Response
                 { success = false, message = "Không có quyền." });
+                Console.WriteLine($"[RBAC] DOC_SHARE_REGEN_CODE denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
                 return;
             }
 
             string newCode = ShareCodeGenerator.GenerateUnique();
-            DocumentRepository.UpdateShareCode(p.docID, newCode);
+            DocumentRepository.UpdateShareCode(docId, newCode);
 
             Reply(packet, MessageType.DOC_SHARE_REGEN_CODE, new Payload_DOC_SHARE_REGEN_CODE_Response
             {
@@ -583,6 +672,299 @@ namespace MarkTogether.Server.Network
                 shareCode = newCode,
                 message = "Đã tạo mã chia sẻ mới"
             });
+        }
+
+        private void HandleDocCreateLink(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_CREATE_LINK_Request>();
+            if (p == null || string.IsNullOrWhiteSpace(p.docID))
+            {
+                Reply(packet, MessageType.DOC_CREATE_LINK, new Payload_DOC_CREATE_LINK_Response
+                { success = false, message = "docID không hợp lệ." });
+                return;
+            }
+
+            string docId = p.docID.Trim();
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanManage(requesterPermission))
+            {
+                Reply(packet, MessageType.DOC_CREATE_LINK, new Payload_DOC_CREATE_LINK_Response
+                { success = false, message = "Chỉ chủ sở hữu mới được tạo sharing link." });
+                Console.WriteLine($"[RBAC] DOC_CREATE_LINK denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
+                return;
+            }
+
+            string linkPermission = DocumentPermissionService.NormalizeSharePermission(p.permission);
+            DateTime? expiresAt = null;
+            if (p.expiresInHours > 0)
+            {
+                int safeHours = p.expiresInHours > 24 * 30 ? 24 * 30 : p.expiresInHours;
+                expiresAt = DateTime.UtcNow.AddHours(safeHours);
+            }
+
+            int? maxUses = null;
+            if (p.maxUses > 0)
+                maxUses = p.maxUses > 1000 ? 1000 : p.maxUses;
+
+            try
+            {
+                SharingLink link = null;
+                for (int i = 0; i < 3 && link == null; i++)
+                {
+                    string token = SecureTokenGenerator.GenerateUrlSafeToken(48);
+                    try
+                    {
+                        link = SharingLinkRepository.Create(docId, currentUserId, token, linkPermission, expiresAt, maxUses);
+                    }
+                    catch
+                    {
+                        if (i == 2) throw;
+                    }
+                }
+
+                Console.WriteLine($"[ShareLink] created user={currentUserId} doc={docId} permission={linkPermission} expiresAt={expiresAt}");
+
+                Reply(packet, MessageType.DOC_CREATE_LINK, new Payload_DOC_CREATE_LINK_Response
+                {
+                    success = true,
+                    message = "Tạo sharing link thành công",
+                    linkId = link?.Id,
+                    linkToken = link?.Token,
+                    permission = linkPermission,
+                    expiresAt = expiresAt,
+                    maxUses = maxUses
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ShareLink] create failed user={currentUserId} doc={docId}: {ex.Message}");
+                Reply(packet, MessageType.DOC_CREATE_LINK, new Payload_DOC_CREATE_LINK_Response
+                { success = false, message = "Không tạo được sharing link." });
+            }
+        }
+
+        private void HandleDocRevokeLink(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_REVOKE_LINK_Request>();
+            if (p == null || string.IsNullOrWhiteSpace(p.linkToken))
+            {
+                Reply(packet, MessageType.DOC_REVOKE_LINK, new Payload_DOC_REVOKE_LINK_Response
+                { success = false, message = "linkToken không hợp lệ." });
+                return;
+            }
+
+            string token = p.linkToken.Trim();
+            bool ok = SharingLinkRepository.RevokeByToken(token, currentUserId);
+            Console.WriteLine($"[ShareLink] revoke user={currentUserId} token={token} success={ok}");
+            Reply(packet, MessageType.DOC_REVOKE_LINK, new Payload_DOC_REVOKE_LINK_Response
+            {
+                success = ok,
+                message = ok ? "Đã thu hồi sharing link" : "Không có quyền hoặc link không tồn tại"
+            });
+        }
+
+        private void HandleDocJoinLink(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_JOIN_LINK_Request>();
+            if (p == null || string.IsNullOrWhiteSpace(p.linkToken))
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "linkToken không hợp lệ." });
+                return;
+            }
+
+            string token = p.linkToken.Trim();
+            var link = SharingLinkRepository.GetByToken(token);
+            if (link == null || !link.IsActive)
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "Sharing link không tồn tại hoặc đã bị thu hồi." });
+                return;
+            }
+
+            if (link.ExpiresAt.HasValue && link.ExpiresAt.Value <= DateTime.UtcNow)
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "Sharing link đã hết hạn." });
+                return;
+            }
+
+            if (link.MaxUses.HasValue && link.UseCount >= link.MaxUses.Value)
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "Sharing link đã vượt quá số lần sử dụng." });
+                return;
+            }
+
+            var doc = DocumentRepository.GetById(link.DocId);
+            if (doc == null || doc.DeletedAt.HasValue)
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "Tài liệu không tồn tại." });
+                return;
+            }
+
+            string permission = DocumentPermissionService.NormalizeSharePermission(link.Permission);
+            string existingPermission = GetPermission(link.DocId, currentUserId);
+            if (!DocumentPermissionService.IsOwner(existingPermission))
+            {
+                if (DocumentShareRepository.GetPermission(link.DocId, currentUserId) != null)
+                    DocumentShareRepository.UpdatePermission(link.DocId, currentUserId, permission);
+                else
+                    DocumentShareRepository.ShareDocument(link.DocId, currentUserId, permission);
+            }
+
+            if (!SharingLinkRepository.IncrementUseCount(token))
+            {
+                Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+                { success = false, message = "Sharing link không còn khả dụng." });
+                return;
+            }
+
+            Console.WriteLine($"[ShareLink] joined user={currentUserId} doc={link.DocId} permission={permission}");
+
+            Reply(packet, MessageType.DOC_JOIN_LINK, new Payload_DOC_JOIN_LINK_Response
+            {
+                success = true,
+                message = "Đã tham gia tài liệu bằng sharing link",
+                docID = doc.Id,
+                title = doc.Title,
+                content = doc.Content ?? string.Empty,
+                revision = DocumentRepository.GetCurrentRevision(doc.Id),
+                permission = DocumentPermissionService.IsOwner(existingPermission) ? existingPermission : permission
+            });
+        }
+
+        private void HandleDocSetVisibility(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_SET_VISIBILITY_Request>();
+            if (p == null || string.IsNullOrWhiteSpace(p.docID))
+            {
+                Reply(packet, MessageType.DOC_SET_VISIBILITY, new Payload_DOC_SET_VISIBILITY_Response
+                { success = false, message = "docID không hợp lệ." });
+                return;
+            }
+
+            string docId = p.docID.Trim();
+            string visibility = DocumentPermissionService.NormalizeVisibility(p.visibility);
+            string publicPermission = DocumentPermissionService.NormalizePublicPermission(p.publicPermission);
+
+            var doc = DocumentRepository.GetById(docId);
+            string requesterPermission = GetPermission(docId, currentUserId);
+            if (doc == null || !DocumentPermissionService.CanManage(requesterPermission))
+            {
+                Reply(packet, MessageType.DOC_SET_VISIBILITY, new Payload_DOC_SET_VISIBILITY_Response
+                { success = false, message = "Chỉ chủ sở hữu mới được thay đổi visibility.", docID = docId });
+                Console.WriteLine($"[RBAC] DOC_SET_VISIBILITY denied user={currentUserId} doc={docId} permission={requesterPermission ?? "none"}");
+                return;
+            }
+
+            bool ok = DocumentRepository.UpdateVisibility(docId, visibility, publicPermission);
+            if (!ok)
+            {
+                Reply(packet, MessageType.DOC_SET_VISIBILITY, new Payload_DOC_SET_VISIBILITY_Response
+                { success = false, message = "Cập nhật visibility thất bại.", docID = docId });
+                return;
+            }
+
+            Console.WriteLine($"[Visibility] user={currentUserId} doc={docId} visibility={visibility} publicPermission={publicPermission}");
+
+            Reply(packet, MessageType.DOC_SET_VISIBILITY, new Payload_DOC_SET_VISIBILITY_Response
+            {
+                success = true,
+                message = "Cập nhật visibility thành công",
+                docID = docId,
+                visibility = visibility,
+                publicPermission = publicPermission
+            });
+        }
+
+        private void HandleDocGetPublicList(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_GET_PUBLIC_LIST_Request>() ?? new Payload_DOC_GET_PUBLIC_LIST_Request();
+            int page = p.page < 1 ? 1 : p.page;
+            int limit = p.limit < 1 ? 20 : (p.limit > 100 ? 100 : p.limit);
+
+            int total = DocumentRepository.CountPublicDocuments();
+            var rows = DocumentRepository.GetPublicDocuments(page, limit);
+
+            Reply(packet, MessageType.DOC_GET_PUBLIC_LIST, new Payload_DOC_GET_PUBLIC_LIST_Response
+            {
+                success = true,
+                message = "OK",
+                page = page,
+                limit = limit,
+                total = total,
+                documents = rows.Select(r => new PublicDocumentDto
+                {
+                    docID = r.Id,
+                    title = r.Title,
+                    ownerId = r.OwnerId,
+                    ownerUsername = r.OwnerUsername,
+                    updatedAt = r.UpdatedAt,
+                    publicPermission = DocumentPermissionService.NormalizePublicPermission(r.PublicPermission)
+                }).ToList()
+            });
+        }
+
+        private void HandleDocSearch(Packet packet)
+        {
+            int currentUserId = ResolveCurrentUserId(packet);
+            if (currentUserId < 0) { ReplyError(packet, "Phiên đăng nhập không hợp lệ."); return; }
+
+            var p = packet.GetPayload<Payload_DOC_SEARCH_Request>();
+            string query = (p?.query ?? string.Empty).Trim();
+            string searchBy = (p?.searchBy ?? "all").Trim().ToLowerInvariant();
+
+            if (query.Length < 2)
+            {
+                Reply(packet, MessageType.DOC_SEARCH, new Payload_DOC_SEARCH_Response
+                { success = false, message = "Từ khóa tìm kiếm phải có ít nhất 2 ký tự." });
+                return;
+            }
+
+            if (searchBy != "id" && searchBy != "title" && searchBy != "all")
+                searchBy = "all";
+
+            try
+            {
+                var rows = DocumentRepository.SearchAccessibleDocuments(currentUserId, query, searchBy, 20);
+                Reply(packet, MessageType.DOC_SEARCH, new Payload_DOC_SEARCH_Response
+                {
+                    success = true,
+                    message = "OK",
+                    results = rows.Select(r => new DocumentSearchResultDto
+                    {
+                        docID = r.Id,
+                        title = r.Title,
+                        ownerUsername = r.OwnerUsername,
+                        visibility = DocumentPermissionService.NormalizeVisibility(r.Visibility),
+                        permission = r.Permission,
+                        updatedAt = r.UpdatedAt
+                    }).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Search] DOC_SEARCH failed user={currentUserId}: {ex.Message}");
+                Reply(packet, MessageType.DOC_SEARCH, new Payload_DOC_SEARCH_Response
+                { success = false, message = "Tìm kiếm thất bại." });
+            }
         }
 
         private void HandleDocJoinCode(Packet packet)
@@ -671,9 +1053,10 @@ namespace MarkTogether.Server.Network
             if (string.IsNullOrWhiteSpace(docId)) { ReplyError(packet, "docID không hợp lệ."); return; }
 
             string perm = GetPermission(docId, currentUserId);
-            if (perm != "owner" && perm != "editor")
+            if (!DocumentPermissionService.CanEdit(perm))
             {
                 ReplyError(packet, "Bạn không có quyền chỉnh sửa tài liệu này.");
+                Console.WriteLine($"[RBAC] OP_{opType.ToUpper()} denied user={currentUserId} doc={docId} permission={perm ?? "none"}");
                 return;
             }
 
@@ -684,21 +1067,41 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            // Reply OK cho người gửi
-            ReplyOk(packet, $"OP_{opType.ToUpper()} received");
+            // [OT] Lấy/tạo state cho document này
+            var state = DocumentStateManager.GetOrCreate(docId);
 
-            // Broadcast cho mọi client khác trong room (trừ chính người gửi)
-            var broadcast = new Payload_OP_BROADCAST
+            var transformedOps = new List<EditOpItem>();
+            foreach (var op in ops ?? new List<EditOpItem>())
             {
-                docID = docId,
-                clientResivion = clientRevision,
-                userID = currentUserId,
-                username = _username,
-                opType = opType,
-                ops = ops ?? new List<EditOpItem>()
-            };
-            var pkt = Packet.Create(MessageType.OP_BROADCAST, broadcast);
-            SessionManager.BroadcastToRoom(docId, pkt, exclude: this);
+                Console.WriteLine($"[OT] {opType.ToUpper()} user={currentUserId} " +
+                    $"clientRev={clientRevision} serverRev={state.ServerRevision} " +
+                    $"pos={op.pos} text='{op.text?.Replace("\n", "\\n").Replace("\r", "\\r")}'" );
+
+                // [OT] Transform op against concurrent server ops, persist vào DB
+                var transformedOp = state.TransformAndApply(op, opType, clientRevision, currentUserId);
+                transformedOps.Add(transformedOp);
+
+                Console.WriteLine($"[OT] {opType.ToUpper()} transformed pos={transformedOp.pos} " +
+                    $"newServerRev={state.ServerRevision}");
+            }
+
+            // Gửi ACK về cho client kèm serverRevision mới nhất
+            Reply(packet, MessageType.OK, new Payload_OK { Message = state.ServerRevision.ToString() });
+
+            // Broadcast từng op đã transform cho các client khác trong room
+            foreach (var tOp in transformedOps)
+            {
+                var broadcast = new Payload_OP_BROADCAST
+                {
+                    docID = docId,
+                    clientResivion = state.ServerRevision,
+                    userID = currentUserId,
+                    username = _username,
+                    opType = opType,
+                    ops = new List<EditOpItem> { tOp }
+                };
+                SessionManager.BroadcastToRoom(docId, Packet.Create(MessageType.OP_BROADCAST, broadcast), exclude: this);
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -717,11 +1120,13 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm == null)
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanRead(perm))
             {
                 Reply(packet, MessageType.CHAT_SEND, new Payload_CHAT_SEND_Response
                 { success = false, message = "Bạn không có quyền trên tài liệu này." });
+                Console.WriteLine($"[RBAC] CHAT_SEND denied user={currentUserId} doc={docId} permission={perm ?? "none"}");
                 return;
             }
 
@@ -730,21 +1135,21 @@ namespace MarkTogether.Server.Network
 
             long id = ChatRepository.Create(new ChatMessage
             {
-                DocId = p.docID,
+                DocId = docId,
                 UserId = currentUserId,
                 Content = content
             });
 
             var broadcast = new Payload_CHAT_BROADCAST
             {
-                docID = p.docID,
+                docID = docId,
                 messageId = id,
                 userId = currentUserId,
                 username = _username,
                 content = content,
                 sentAt = DateTime.UtcNow
             };
-            SessionManager.BroadcastToRoom(p.docID, Packet.Create(MessageType.CHAT_BROADCAST, broadcast));
+            SessionManager.BroadcastToRoom(docId, Packet.Create(MessageType.CHAT_BROADCAST, broadcast));
 
             Reply(packet, MessageType.CHAT_SEND, new Payload_CHAT_SEND_Response
             { success = true, message = "Đã gửi" });
@@ -759,15 +1164,16 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID))
             { ReplyError(packet, "docID không hợp lệ."); return; }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm == null) { ReplyError(packet, "Không có quyền truy cập."); return; }
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanRead(perm)) { ReplyError(packet, "Không có quyền truy cập."); return; }
 
             int limit = p.limit > 0 && p.limit <= 200 ? p.limit : 50;
-            var rows = ChatRepository.GetRecent(p.docID, limit);
+            var rows = ChatRepository.GetRecent(docId, limit);
 
             var resp = new Payload_CHAT_HISTORY_Response
             {
-                docID = p.docID,
+                docID = docId,
                 messages = rows.Select(r => new Payload_CHAT_BROADCAST
                 {
                     docID = r.DocId,
@@ -797,17 +1203,19 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm == null)
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanComment(perm))
             {
                 Reply(packet, MessageType.COMMENT_CREATE, new Payload_COMMENT_CREATE_Response
-                { success = false, message = "Không có quyền." });
+                { success = false, message = "Bạn không có quyền bình luận trên tài liệu này." });
+                Console.WriteLine($"[RBAC] COMMENT_CREATE denied user={currentUserId} doc={docId} permission={perm ?? "none"}");
                 return;
             }
 
             string id = CommentRepository.Create(new Comment
             {
-                DocId = p.docID,
+                DocId = docId,
                 UserId = currentUserId,
                 ParentId = p.parentId,
                 AnchorStart = p.anchorStart,
@@ -821,7 +1229,7 @@ namespace MarkTogether.Server.Network
             Reply(packet, MessageType.COMMENT_CREATE, new Payload_COMMENT_CREATE_Response
             { success = true, comment = dto });
 
-            SessionManager.BroadcastToRoom(p.docID,
+            SessionManager.BroadcastToRoom(docId,
                 Packet.Create(MessageType.COMMENT_BROADCAST, new Payload_COMMENT_BROADCAST
                 { action = "created", comment = dto }),
                 exclude: this);
@@ -836,13 +1244,14 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID))
             { ReplyError(packet, "docID không hợp lệ."); return; }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm == null) { ReplyError(packet, "Không có quyền."); return; }
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanRead(perm)) { ReplyError(packet, "Không có quyền."); return; }
 
-            var rows = CommentRepository.GetByDoc(p.docID);
+            var rows = CommentRepository.GetByDoc(docId);
             Reply(packet, MessageType.COMMENT_LIST, new Payload_COMMENT_LIST_Response
             {
-                docID = p.docID,
+                docID = docId,
                 comments = rows.Select(ToDto).ToList()
             });
         }
@@ -860,7 +1269,12 @@ namespace MarkTogether.Server.Network
             if (c == null) { ReplyError(packet, "Không tìm thấy comment."); return; }
 
             string perm = GetPermission(c.DocId, currentUserId);
-            if (perm == null) { ReplyError(packet, "Không có quyền."); return; }
+            if (!DocumentPermissionService.CanComment(perm))
+            {
+                ReplyError(packet, "Bạn không có quyền cập nhật trạng thái comment.");
+                Console.WriteLine($"[RBAC] COMMENT_RESOLVE denied user={currentUserId} doc={c.DocId} permission={perm ?? "none"}");
+                return;
+            }
 
             CommentRepository.SetResolved(p.commentId, p.resolved);
             var updated = CommentRepository.GetById(p.commentId);
@@ -886,9 +1300,14 @@ namespace MarkTogether.Server.Network
             if (c == null) { ReplyError(packet, "Không tìm thấy comment."); return; }
 
             // Cho phép tác giả comment hoặc owner doc xoá
-            var doc = DocumentRepository.GetById(c.DocId);
-            bool canDelete = c.UserId == currentUserId || (doc != null && doc.OwnerId == currentUserId);
-            if (!canDelete) { ReplyError(packet, "Không có quyền xoá comment này."); return; }
+            string perm = GetPermission(c.DocId, currentUserId);
+            bool canDelete = c.UserId == currentUserId || DocumentPermissionService.IsOwner(perm);
+            if (!canDelete)
+            {
+                ReplyError(packet, "Không có quyền xoá comment này.");
+                Console.WriteLine($"[RBAC] COMMENT_DELETE denied user={currentUserId} doc={c.DocId} permission={perm ?? "none"} commentOwner={c.UserId}");
+                return;
+            }
 
             CommentRepository.Delete(p.commentId);
             ReplyOk(packet, "Đã xoá comment");
@@ -961,30 +1380,35 @@ namespace MarkTogether.Server.Network
 
             try
             {
-                string url = ImageStorageService.Save(currentUserId, p.fileName, p.data, p.mimeType);
-                string id = ImageRepository.Create(new Image
+                string docId = string.IsNullOrWhiteSpace(p.docID) ? null : p.docID.Trim();
+                if (!string.IsNullOrWhiteSpace(docId))
                 {
-                    UserId = currentUserId,
-                    FileName = p.fileName,
-                    MimeType = p.mimeType,
-                    Url = url,
-                    Size = p.data.Length
-                });
+                    string permission = GetPermission(docId, currentUserId);
+                    if (!DocumentPermissionService.CanEdit(permission))
+                    {
+                        Reply(packet, MessageType.IMAGE_UPLOAD, new Payload_IMAGE_UPLOAD_Response
+                        { success = false, message = "Bạn không có quyền upload ảnh vào tài liệu này." });
+                        Console.WriteLine($"[RBAC] IMAGE_UPLOAD denied user={currentUserId} doc={docId} permission={permission ?? "none"}");
+                        return;
+                    }
+                }
+
+                Image img = ImageStorageService.SaveWithDedup(currentUserId, p.fileName, p.data, p.mimeType, docId);
 
                 string avatarUrl = null;
                 if (p.isAvatar)
                 {
-                    ImageRepository.UpdateUserAvatar(currentUserId, url);
-                    avatarUrl = url;
+                    ImageRepository.UpdateUserAvatar(currentUserId, img.Url);
+                    avatarUrl = img.Url;
                 }
 
                 Reply(packet, MessageType.IMAGE_UPLOAD, new Payload_IMAGE_UPLOAD_Response
                 {
                     success = true,
-                    imageId = id,
-                    url = url,
+                    imageId = img.Id,
+                    url = img.Url,
                     avatarUrl = avatarUrl,
-                    message = "Upload thành công"
+                    message = img.UserId == currentUserId ? "Upload thành công" : "Ảnh đã tồn tại, tái sử dụng bản đã lưu"
                 });
             }
             catch (Exception ex)
@@ -1015,6 +1439,14 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
+            if (!ImageRepository.CanUserAccessImage(currentUserId, p.imageId))
+            {
+                Reply(packet, MessageType.IMAGE_GET, new Payload_IMAGE_GET_Response
+                { success = false, message = "Bạn không có quyền truy cập ảnh này." });
+                Console.WriteLine($"[RBAC] IMAGE_GET denied user={currentUserId} image={p.imageId}");
+                return;
+            }
+
             byte[] bytes = ImageStorageService.Load(img.Url) ?? img.FileData;
             Reply(packet, MessageType.IMAGE_GET, new Payload_IMAGE_GET_Response
             {
@@ -1038,11 +1470,12 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID))
             { ReplyError(packet, "docID không hợp lệ."); return; }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm == null) { ReplyError(packet, "Không có quyền."); return; }
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanRead(perm)) { ReplyError(packet, "Không có quyền."); return; }
 
-            int total = DocumentVersionRepository.CountVersions(p.docID);
-            var rows = DocumentVersionRepository.GetVersions(p.docID, p.page, p.limit);
+            int total = DocumentVersionRepository.CountVersions(docId);
+            var rows = DocumentVersionRepository.GetVersions(docId, p.page, p.limit);
 
             var versions = new List<VersionInfoDto>();
             foreach (var r in rows)
@@ -1058,7 +1491,7 @@ namespace MarkTogether.Server.Network
             }
 
             Reply(packet, MessageType.DOC_VERSION_LIST, new Payload_DOC_VERSION_LIST_Response
-            { docID = p.docID, total = total, versions = versions });
+            { docID = docId, total = total, versions = versions });
         }
 
         private void HandleVersionDetail(Packet packet)
@@ -1079,7 +1512,7 @@ namespace MarkTogether.Server.Network
             }
 
             string perm = GetPermission(v.DocId, currentUserId);
-            if (perm == null)
+            if (!DocumentPermissionService.CanRead(perm))
             {
                 Reply(packet, MessageType.DOC_VERSION_DETAIL, new Payload_DOC_VERSION_DETAIL_Response
                 { success = false, message = "Không có quyền." });
@@ -1106,15 +1539,17 @@ namespace MarkTogether.Server.Network
             if (p == null || string.IsNullOrWhiteSpace(p.docID) || string.IsNullOrWhiteSpace(p.versionId))
             { ReplyError(packet, "Tham số không hợp lệ."); return; }
 
-            string perm = GetPermission(p.docID, currentUserId);
-            if (perm != "owner" && perm != "editor")
+            string docId = p.docID.Trim();
+            string perm = GetPermission(docId, currentUserId);
+            if (!DocumentPermissionService.CanEdit(perm))
             {
                 Reply(packet, MessageType.DOC_VERSION_RESTORE, new Payload_DOC_VERSION_RESTORE_Response
                 { success = false, message = "Bạn không có quyền khôi phục." });
+                Console.WriteLine($"[RBAC] DOC_VERSION_RESTORE denied user={currentUserId} doc={docId} permission={perm ?? "none"}");
                 return;
             }
 
-            bool ok = DocumentVersionRepository.RestoreVersion(p.docID, p.versionId);
+            bool ok = DocumentVersionRepository.RestoreVersion(docId, p.versionId);
             if (!ok)
             {
                 Reply(packet, MessageType.DOC_VERSION_RESTORE, new Payload_DOC_VERSION_RESTORE_Response
@@ -1125,10 +1560,10 @@ namespace MarkTogether.Server.Network
             // Lưu thêm 1 version sau restore (đánh dấu)
             try
             {
-                var doc = DocumentRepository.GetById(p.docID);
+                var doc = DocumentRepository.GetById(docId);
                 DocumentVersionRepository.SaveVersion(new DocumentVersion
                 {
-                    DocId = p.docID,
+                    DocId = docId,
                     ContentSnapshot = doc?.Content ?? string.Empty,
                     SavedBy = currentUserId,
                     Label = $"Restored from {p.versionId}"
@@ -1136,8 +1571,8 @@ namespace MarkTogether.Server.Network
             }
             catch { /* best-effort */ }
 
-            var newDoc = DocumentRepository.GetById(p.docID);
-            int rev = DocumentRepository.GetCurrentRevision(p.docID);
+            var newDoc = DocumentRepository.GetById(docId);
+            int rev = DocumentRepository.GetCurrentRevision(docId);
 
             Reply(packet, MessageType.DOC_VERSION_RESTORE, new Payload_DOC_VERSION_RESTORE_Response
             {
@@ -1148,9 +1583,9 @@ namespace MarkTogether.Server.Network
             });
 
             // Notify mọi client trong room phải reload doc
-            SessionManager.BroadcastToRoom(p.docID,
+            SessionManager.BroadcastToRoom(docId,
                 Packet.Create(MessageType.DOC_RELOAD_BROADCAST, new Payload_DOC_RELOAD_BROADCAST
-                { docID = p.docID, reason = "version_restored", revision = rev }));
+                { docID = docId, reason = "version_restored", revision = rev }));
         }
 
         private void HandleVersionDelete(Packet packet)
@@ -1170,11 +1605,12 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
-            var doc = DocumentRepository.GetById(v.DocId);
-            if (doc == null || doc.OwnerId != currentUserId)
+            string perm = GetPermission(v.DocId, currentUserId);
+            if (!DocumentPermissionService.CanManage(perm))
             {
                 Reply(packet, MessageType.DOC_VERSION_DELETE, new Payload_DOC_VERSION_DELETE_Response
                 { success = false, message = "Chỉ chủ sở hữu mới được xoá version." });
+                Console.WriteLine($"[RBAC] DOC_VERSION_DELETE denied user={currentUserId} doc={v.DocId} permission={perm ?? "none"}");
                 return;
             }
 
@@ -1202,18 +1638,49 @@ namespace MarkTogether.Server.Network
             _lastAiRequestUtc = now;
 
             var p = packet.GetPayload<Payload_AI_Request>();
-            if (p == null || (string.IsNullOrWhiteSpace(p.userPrompt) && string.IsNullOrWhiteSpace(p.contextText)))
+            if (p == null)
+            {
+                Reply(packet, MessageType.AI_RESPONSE, new Payload_AI_Response
+                { success = false, message = "Payload rỗng." });
+                return;
+            }
+
+            string actionMode = string.IsNullOrWhiteSpace(p.actionMode)
+                ? "text"
+                : p.actionMode.Trim().ToLowerInvariant();
+
+            int maxLen = actionMode == "edit" ? 80000 : 20000;
+            int totalLen = (p.userPrompt?.Length ?? 0)
+                + (p.contextText?.Length ?? 0)
+                + (p.documentText?.Length ?? 0);
+            if (totalLen > maxLen)
+            {
+                Reply(packet, MessageType.AI_RESPONSE, new Payload_AI_Response
+                { success = false, message = $"Prompt quá dài (>{maxLen} ký tự)." });
+                return;
+            }
+
+            if (actionMode == "text" &&
+                string.IsNullOrWhiteSpace(p.userPrompt) && string.IsNullOrWhiteSpace(p.contextText))
             {
                 Reply(packet, MessageType.AI_RESPONSE, new Payload_AI_Response
                 { success = false, message = "Prompt rỗng." });
                 return;
             }
-            if ((p.userPrompt?.Length ?? 0) + (p.contextText?.Length ?? 0) > 20000)
+
+            if (actionMode == "edit" && string.IsNullOrWhiteSpace(p.userPrompt))
             {
                 Reply(packet, MessageType.AI_RESPONSE, new Payload_AI_Response
-                { success = false, message = "Prompt quá dài." });
+                { success = false, message = "Cần mô tả thao tác cần thực hiện." });
                 return;
             }
+
+            string keyHash = string.IsNullOrEmpty(p.apiKey)
+                ? "(server-fallback)"
+                : Sha256Short(p.apiKey);
+            Console.WriteLine($"[AI] user={currentUserId} provider={p.provider ?? "gemini"} " +
+                              $"model={p.model ?? "default"} keyHash={keyHash} actionMode={actionMode} " +
+                              $"docLen={p.documentText?.Length ?? 0}");
 
             // Chạy bất đồng bộ để không chặn loop chính
             Packet originPacket = packet;
@@ -1221,12 +1688,47 @@ namespace MarkTogether.Server.Network
             {
                 try
                 {
-                    string text = await AISuggestionService
-                        .AskAsync(p.mode, p.userPrompt, p.contextText)
-                        .ConfigureAwait(false);
+                    if (actionMode == "edit")
+                    {
+                        string rawJson = await AISuggestionService.AskEditAsync(
+                                p.provider, p.model, p.apiKey,
+                                p.userPrompt,
+                                p.documentText ?? "", p.documentText?.Length ?? 0,
+                                p.selectionStart, p.selectionEnd, p.cursorPosition)
+                            .ConfigureAwait(false);
 
-                    Reply(originPacket, MessageType.AI_RESPONSE, new Payload_AI_Response
-                    { success = true, text = text });
+                        var vr = AIEditPlanValidator.Validate(
+                            rawJson, p.documentText?.Length ?? 0, p.selectionStart, p.selectionEnd);
+
+                        if (!vr.Ok)
+                        {
+                            Reply(originPacket, MessageType.AI_RESPONSE, new Payload_AI_Response
+                            {
+                                success = true,
+                                kind = "text",
+                                text = "AI trả về kế hoạch không hợp lệ: " + vr.Reason +
+                                       ". Bạn có thể thử lại hoặc diễn đạt rõ hơn."
+                            });
+                            return;
+                        }
+
+                        Reply(originPacket, MessageType.AI_RESPONSE, new Payload_AI_Response
+                        {
+                            success = true,
+                            kind = vr.Kind,
+                            text = vr.TextFallback ?? "",
+                            editPlanJson = vr.NormalizedJson ?? ""
+                        });
+                    }
+                    else
+                    {
+                        string text = await AISuggestionService
+                            .AskAsync(p.provider, p.model, p.apiKey, p.mode, p.userPrompt, p.contextText)
+                            .ConfigureAwait(false);
+
+                        Reply(originPacket, MessageType.AI_RESPONSE, new Payload_AI_Response
+                        { success = true, kind = "text", text = text });
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1234,6 +1736,15 @@ namespace MarkTogether.Server.Network
                     { success = false, message = ex.Message });
                 }
             });
+        }
+
+        private static string Sha256Short(string value)
+        {
+            using (var sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(value ?? ""));
+                return BitConverter.ToString(hash, 0, 4).Replace("-", "").ToLowerInvariant();
+            }
         }
     }
 }
