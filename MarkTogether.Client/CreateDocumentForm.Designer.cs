@@ -101,8 +101,8 @@ namespace MarkTogether.Client
             this.Controls.Add(this.lblFieldTitle);
             this.Controls.Add(this.lblSubtitle);
             this.Controls.Add(this.lblHeading);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Name = "CreateDocumentForm";

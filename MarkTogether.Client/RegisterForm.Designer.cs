@@ -35,170 +35,17 @@ namespace MarkTogether.Client
             this.btnRegister = new System.Windows.Forms.Button();
             this.lblFooter = new System.Windows.Forms.Label();
             this.lnkBackToLogin = new System.Windows.Forms.LinkLabel();
+            this.pnlCard.SuspendLayout();
+            this.pnlUsername.SuspendLayout();
+            this.pnlEmail.SuspendLayout();
+            this.pnlPassword.SuspendLayout();
+            this.pnlConfirmPassword.SuspendLayout();
             this.SuspendLayout();
-            //
-            // Card
-            //
-            this.pnlCard.BackColor = AppTheme.Surface;
+            // 
+            // pnlCard
+            // 
             this.pnlCard.Anchor = System.Windows.Forms.AnchorStyles.None;
-            this.pnlCard.Location = new System.Drawing.Point(180, 30);
-            this.pnlCard.Size = new System.Drawing.Size(440, 660);
-            this.pnlCard.Padding = new System.Windows.Forms.Padding(AppTheme.Space2Xl);
-            this.pnlCard.Name = "pnlCard";
-            //
-            // Brand label
-            //
-            this.lblBrand.AutoSize = true;
-            this.lblBrand.Font = AppTheme.Caption;
-            this.lblBrand.ForeColor = AppTheme.TextSecondary;
-            this.lblBrand.Location = new System.Drawing.Point(36, 36);
-            this.lblBrand.Text = "MARKTOGETHER";
-            //
-            // Title
-            //
-            this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = AppTheme.H1;
-            this.lblTitle.ForeColor = AppTheme.TextPrimary;
-            this.lblTitle.Location = new System.Drawing.Point(36, 60);
-            this.lblTitle.Text = "Tạo tài khoản";
-            //
-            // Subtitle
-            //
-            this.lblSubtitle.AutoSize = true;
-            this.lblSubtitle.Font = AppTheme.Subtitle;
-            this.lblSubtitle.ForeColor = AppTheme.TextSecondary;
-            this.lblSubtitle.Location = new System.Drawing.Point(36, 110);
-            this.lblSubtitle.Text = "Điền thông tin để bắt đầu cộng tác.";
-            //
-            // Username
-            //
-            this.lblUsername.AutoSize = true;
-            this.lblUsername.Font = AppTheme.BodyBold;
-            this.lblUsername.ForeColor = AppTheme.TextPrimary;
-            this.lblUsername.Location = new System.Drawing.Point(36, 158);
-            this.lblUsername.Text = "Tên đăng nhập";
-            //
-            this.pnlUsername.BackColor = AppTheme.Surface;
-            this.pnlUsername.Location = new System.Drawing.Point(36, 184);
-            this.pnlUsername.Size = new System.Drawing.Size(368, AppTheme.InputHeight);
-            this.pnlUsername.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
-            this.pnlUsername.Name = "pnlUsername";
-            //
-            this.txtUsername.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.txtUsername.Font = AppTheme.Body;
-            this.txtUsername.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtUsername.Name = "txtUsername";
-            this.pnlUsername.Controls.Add(this.txtUsername);
-            //
-            // Email
-            //
-            this.lblEmail.AutoSize = true;
-            this.lblEmail.Font = AppTheme.BodyBold;
-            this.lblEmail.ForeColor = AppTheme.TextPrimary;
-            this.lblEmail.Location = new System.Drawing.Point(36, 240);
-            this.lblEmail.Text = "Email (tuỳ chọn)";
-            //
-            this.pnlEmail.BackColor = AppTheme.Surface;
-            this.pnlEmail.Location = new System.Drawing.Point(36, 266);
-            this.pnlEmail.Size = new System.Drawing.Size(368, AppTheme.InputHeight);
-            this.pnlEmail.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
-            this.pnlEmail.Name = "pnlEmail";
-            //
-            this.txtEmail.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.txtEmail.Font = AppTheme.Body;
-            this.txtEmail.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtEmail.Name = "txtEmail";
-            this.pnlEmail.Controls.Add(this.txtEmail);
-            //
-            // Password
-            //
-            this.lblPassword.AutoSize = true;
-            this.lblPassword.Font = AppTheme.BodyBold;
-            this.lblPassword.ForeColor = AppTheme.TextPrimary;
-            this.lblPassword.Location = new System.Drawing.Point(36, 322);
-            this.lblPassword.Text = "Mật khẩu";
-            //
-            this.pnlPassword.BackColor = AppTheme.Surface;
-            this.pnlPassword.Location = new System.Drawing.Point(36, 348);
-            this.pnlPassword.Size = new System.Drawing.Size(368, AppTheme.InputHeight);
-            this.pnlPassword.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
-            this.pnlPassword.Name = "pnlPassword";
-            //
-            this.txtPassword.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.txtPassword.Font = AppTheme.Body;
-            this.txtPassword.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtPassword.PasswordChar = '•';
-            this.txtPassword.Name = "txtPassword";
-            this.pnlPassword.Controls.Add(this.txtPassword);
-            //
-            // Confirm password
-            //
-            this.lblConfirmPassword.AutoSize = true;
-            this.lblConfirmPassword.Font = AppTheme.BodyBold;
-            this.lblConfirmPassword.ForeColor = AppTheme.TextPrimary;
-            this.lblConfirmPassword.Location = new System.Drawing.Point(36, 404);
-            this.lblConfirmPassword.Text = "Xác nhận mật khẩu";
-            //
-            this.pnlConfirmPassword.BackColor = AppTheme.Surface;
-            this.pnlConfirmPassword.Location = new System.Drawing.Point(36, 430);
-            this.pnlConfirmPassword.Size = new System.Drawing.Size(368, AppTheme.InputHeight);
-            this.pnlConfirmPassword.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
-            this.pnlConfirmPassword.Name = "pnlConfirmPassword";
-            //
-            this.txtConfirmPassword.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.txtConfirmPassword.Font = AppTheme.Body;
-            this.txtConfirmPassword.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtConfirmPassword.PasswordChar = '•';
-            this.txtConfirmPassword.Name = "txtConfirmPassword";
-            this.txtConfirmPassword.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtConfirmPassword_KeyDown);
-            this.pnlConfirmPassword.Controls.Add(this.txtConfirmPassword);
-            //
-            // Error banner
-            //
-            this.lblErrorBanner.Visible = false;
-            this.lblErrorBanner.BackColor = System.Drawing.Color.FromArgb(0xFE, 0xF2, 0xF2);
-            this.lblErrorBanner.ForeColor = AppTheme.Error;
-            this.lblErrorBanner.Font = AppTheme.Caption;
-            this.lblErrorBanner.Location = new System.Drawing.Point(36, 482);
-            this.lblErrorBanner.Size = new System.Drawing.Size(368, 36);
-            this.lblErrorBanner.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            this.lblErrorBanner.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
-            this.lblErrorBanner.Name = "lblErrorBanner";
-            //
-            // Register button
-            //
-            this.btnRegister.Location = new System.Drawing.Point(36, 530);
-            this.btnRegister.Size = new System.Drawing.Size(368, AppTheme.ButtonHeight);
-            this.btnRegister.Text = "Tạo tài khoản";
-            this.btnRegister.Font = AppTheme.Button;
-            this.btnRegister.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnRegister.BackColor = AppTheme.Primary;
-            this.btnRegister.ForeColor = AppTheme.TextOnPrimary;
-            this.btnRegister.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.btnRegister.UseVisualStyleBackColor = false;
-            this.btnRegister.Name = "btnRegister";
-            this.btnRegister.Click += new System.EventHandler(this.btnRegister_Click);
-            //
-            // Footer
-            //
-            this.lblFooter.AutoSize = true;
-            this.lblFooter.Font = AppTheme.Caption;
-            this.lblFooter.ForeColor = AppTheme.TextSecondary;
-            this.lblFooter.Location = new System.Drawing.Point(120, 600);
-            this.lblFooter.Text = "Đã có tài khoản?";
-
-            this.lnkBackToLogin.AutoSize = true;
-            this.lnkBackToLogin.Font = AppTheme.BodyBold;
-            this.lnkBackToLogin.LinkColor = AppTheme.Primary;
-            this.lnkBackToLogin.ActiveLinkColor = AppTheme.PrimaryPressed;
-            this.lnkBackToLogin.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
-            this.lnkBackToLogin.Location = new System.Drawing.Point(238, 599);
-            this.lnkBackToLogin.Name = "lnkBackToLogin";
-            this.lnkBackToLogin.Text = "Đăng nhập";
-            this.lnkBackToLogin.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkBackToLogin_LinkClicked);
-            //
-            // Add to card
-            //
+            this.pnlCard.BackColor = System.Drawing.Color.White;
             this.pnlCard.Controls.Add(this.lblBrand);
             this.pnlCard.Controls.Add(this.lblTitle);
             this.pnlCard.Controls.Add(this.lblSubtitle);
@@ -214,21 +61,272 @@ namespace MarkTogether.Client
             this.pnlCard.Controls.Add(this.btnRegister);
             this.pnlCard.Controls.Add(this.lblFooter);
             this.pnlCard.Controls.Add(this.lnkBackToLogin);
-            //
-            // Form
-            //
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.BackColor = AppTheme.Background;
-            this.ClientSize = new System.Drawing.Size(800, 720);
-            this.Controls.Add(this.pnlCard);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
+            this.pnlCard.Location = new System.Drawing.Point(360, 60);
+            this.pnlCard.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlCard.Name = "pnlCard";
+            this.pnlCard.Padding = new System.Windows.Forms.Padding(64);
+            this.pnlCard.Size = new System.Drawing.Size(880, 1320);
+            this.pnlCard.TabIndex = 0;
+            // 
+            // lblBrand
+            // 
+            this.lblBrand.AutoSize = true;
+            this.lblBrand.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblBrand.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblBrand.Location = new System.Drawing.Point(72, 72);
+            this.lblBrand.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblBrand.Name = "lblBrand";
+            this.lblBrand.Size = new System.Drawing.Size(207, 29);
+            this.lblBrand.TabIndex = 0;
+            this.lblBrand.Text = "MARKTOGETHER";
+            // 
+            // lblTitle
+            // 
+            this.lblTitle.AutoSize = true;
+            this.lblTitle.Font = new System.Drawing.Font("Inter", 22F, System.Drawing.FontStyle.Bold);
+            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblTitle.Location = new System.Drawing.Point(72, 120);
+            this.lblTitle.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblTitle.Name = "lblTitle";
+            this.lblTitle.Size = new System.Drawing.Size(414, 71);
+            this.lblTitle.TabIndex = 1;
+            this.lblTitle.Text = "Tạo tài khoản";
+            // 
+            // lblSubtitle
+            // 
+            this.lblSubtitle.AutoSize = true;
+            this.lblSubtitle.Font = new System.Drawing.Font("Inter", 11F);
+            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblSubtitle.Location = new System.Drawing.Point(72, 220);
+            this.lblSubtitle.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblSubtitle.Name = "lblSubtitle";
+            this.lblSubtitle.Size = new System.Drawing.Size(514, 36);
+            this.lblSubtitle.TabIndex = 2;
+            this.lblSubtitle.Text = "Điền thông tin để bắt đầu cộng tác.";
+            // 
+            // lblUsername
+            // 
+            this.lblUsername.AutoSize = true;
+            this.lblUsername.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblUsername.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblUsername.Location = new System.Drawing.Point(72, 316);
+            this.lblUsername.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblUsername.Name = "lblUsername";
+            this.lblUsername.Size = new System.Drawing.Size(210, 33);
+            this.lblUsername.TabIndex = 3;
+            this.lblUsername.Text = "Tên đăng nhập";
+            // 
+            // pnlUsername
+            // 
+            this.pnlUsername.BackColor = System.Drawing.Color.White;
+            this.pnlUsername.Controls.Add(this.txtUsername);
+            this.pnlUsername.Location = new System.Drawing.Point(72, 368);
+            this.pnlUsername.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlUsername.Name = "pnlUsername";
+            this.pnlUsername.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlUsername.Size = new System.Drawing.Size(736, 76);
+            this.pnlUsername.TabIndex = 4;
+            // 
+            // txtUsername
+            // 
+            this.txtUsername.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtUsername.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtUsername.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtUsername.Location = new System.Drawing.Point(24, 20);
+            this.txtUsername.Margin = new System.Windows.Forms.Padding(6);
+            this.txtUsername.Name = "txtUsername";
+            this.txtUsername.Size = new System.Drawing.Size(688, 33);
+            this.txtUsername.TabIndex = 0;
+            // 
+            // lblEmail
+            // 
+            this.lblEmail.AutoSize = true;
+            this.lblEmail.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblEmail.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblEmail.Location = new System.Drawing.Point(72, 480);
+            this.lblEmail.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblEmail.Name = "lblEmail";
+            this.lblEmail.Size = new System.Drawing.Size(231, 33);
+            this.lblEmail.TabIndex = 5;
+            this.lblEmail.Text = "Email (tuỳ chọn)";
+            // 
+            // pnlEmail
+            // 
+            this.pnlEmail.BackColor = System.Drawing.Color.White;
+            this.pnlEmail.Controls.Add(this.txtEmail);
+            this.pnlEmail.Location = new System.Drawing.Point(72, 532);
+            this.pnlEmail.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlEmail.Name = "pnlEmail";
+            this.pnlEmail.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlEmail.Size = new System.Drawing.Size(736, 76);
+            this.pnlEmail.TabIndex = 6;
+            // 
+            // txtEmail
+            // 
+            this.txtEmail.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtEmail.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtEmail.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtEmail.Location = new System.Drawing.Point(24, 20);
+            this.txtEmail.Margin = new System.Windows.Forms.Padding(6);
+            this.txtEmail.Name = "txtEmail";
+            this.txtEmail.Size = new System.Drawing.Size(688, 33);
+            this.txtEmail.TabIndex = 0;
+            // 
+            // lblPassword
+            // 
+            this.lblPassword.AutoSize = true;
+            this.lblPassword.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblPassword.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblPassword.Location = new System.Drawing.Point(72, 644);
+            this.lblPassword.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblPassword.Name = "lblPassword";
+            this.lblPassword.Size = new System.Drawing.Size(138, 33);
+            this.lblPassword.TabIndex = 7;
+            this.lblPassword.Text = "Mật khẩu";
+            // 
+            // pnlPassword
+            // 
+            this.pnlPassword.BackColor = System.Drawing.Color.White;
+            this.pnlPassword.Controls.Add(this.txtPassword);
+            this.pnlPassword.Location = new System.Drawing.Point(72, 696);
+            this.pnlPassword.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlPassword.Name = "pnlPassword";
+            this.pnlPassword.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlPassword.Size = new System.Drawing.Size(736, 76);
+            this.pnlPassword.TabIndex = 8;
+            // 
+            // txtPassword
+            // 
+            this.txtPassword.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtPassword.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtPassword.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtPassword.Location = new System.Drawing.Point(24, 20);
+            this.txtPassword.Margin = new System.Windows.Forms.Padding(6);
+            this.txtPassword.Name = "txtPassword";
+            this.txtPassword.PasswordChar = '•';
+            this.txtPassword.Size = new System.Drawing.Size(688, 33);
+            this.txtPassword.TabIndex = 0;
+            // 
+            // lblConfirmPassword
+            // 
+            this.lblConfirmPassword.AutoSize = true;
+            this.lblConfirmPassword.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblConfirmPassword.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblConfirmPassword.Location = new System.Drawing.Point(72, 808);
+            this.lblConfirmPassword.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblConfirmPassword.Name = "lblConfirmPassword";
+            this.lblConfirmPassword.Size = new System.Drawing.Size(268, 33);
+            this.lblConfirmPassword.TabIndex = 9;
+            this.lblConfirmPassword.Text = "Xác nhận mật khẩu";
+            // 
+            // pnlConfirmPassword
+            // 
+            this.pnlConfirmPassword.BackColor = System.Drawing.Color.White;
+            this.pnlConfirmPassword.Controls.Add(this.txtConfirmPassword);
+            this.pnlConfirmPassword.Location = new System.Drawing.Point(72, 860);
+            this.pnlConfirmPassword.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlConfirmPassword.Name = "pnlConfirmPassword";
+            this.pnlConfirmPassword.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlConfirmPassword.Size = new System.Drawing.Size(736, 76);
+            this.pnlConfirmPassword.TabIndex = 10;
+            // 
+            // txtConfirmPassword
+            // 
+            this.txtConfirmPassword.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtConfirmPassword.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtConfirmPassword.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtConfirmPassword.Location = new System.Drawing.Point(24, 20);
+            this.txtConfirmPassword.Margin = new System.Windows.Forms.Padding(6);
+            this.txtConfirmPassword.Name = "txtConfirmPassword";
+            this.txtConfirmPassword.PasswordChar = '•';
+            this.txtConfirmPassword.Size = new System.Drawing.Size(688, 33);
+            this.txtConfirmPassword.TabIndex = 0;
+            this.txtConfirmPassword.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtConfirmPassword_KeyDown);
+            // 
+            // lblErrorBanner
+            // 
+            this.lblErrorBanner.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(254)))), ((int)(((byte)(242)))), ((int)(((byte)(242)))));
+            this.lblErrorBanner.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblErrorBanner.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(239)))), ((int)(((byte)(68)))), ((int)(((byte)(68)))));
+            this.lblErrorBanner.Location = new System.Drawing.Point(72, 964);
+            this.lblErrorBanner.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblErrorBanner.Name = "lblErrorBanner";
+            this.lblErrorBanner.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.lblErrorBanner.Size = new System.Drawing.Size(736, 72);
+            this.lblErrorBanner.TabIndex = 11;
+            this.lblErrorBanner.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblErrorBanner.Visible = false;
+            // 
+            // btnRegister
+            // 
+            this.btnRegister.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
+            this.btnRegister.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnRegister.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnRegister.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.btnRegister.ForeColor = System.Drawing.Color.White;
+            this.btnRegister.Location = new System.Drawing.Point(72, 1060);
+            this.btnRegister.Margin = new System.Windows.Forms.Padding(6);
+            this.btnRegister.Name = "btnRegister";
+            this.btnRegister.Size = new System.Drawing.Size(736, 80);
+            this.btnRegister.TabIndex = 12;
+            this.btnRegister.Text = "Tạo tài khoản";
+            this.btnRegister.UseVisualStyleBackColor = false;
+            this.btnRegister.Click += new System.EventHandler(this.btnRegister_Click);
+            // 
+            // lblFooter
+            // 
+            this.lblFooter.AutoSize = true;
+            this.lblFooter.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblFooter.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblFooter.Location = new System.Drawing.Point(240, 1200);
+            this.lblFooter.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblFooter.Name = "lblFooter";
+            this.lblFooter.Size = new System.Drawing.Size(202, 29);
+            this.lblFooter.TabIndex = 13;
+            this.lblFooter.Text = "Đã có tài khoản?";
+            // 
+            // lnkBackToLogin
+            // 
+            this.lnkBackToLogin.ActiveLinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(64)))), ((int)(((byte)(175)))));
+            this.lnkBackToLogin.AutoSize = true;
+            this.lnkBackToLogin.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lnkBackToLogin.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
+            this.lnkBackToLogin.LinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
+            this.lnkBackToLogin.Location = new System.Drawing.Point(476, 1198);
+            this.lnkBackToLogin.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lnkBackToLogin.Name = "lnkBackToLogin";
+            this.lnkBackToLogin.Size = new System.Drawing.Size(158, 33);
+            this.lnkBackToLogin.TabIndex = 14;
+            this.lnkBackToLogin.TabStop = true;
+            this.lnkBackToLogin.Text = "Đăng nhập";
+            this.lnkBackToLogin.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkBackToLogin_LinkClicked);
+            // 
+            // RegisterForm
+            // 
             this.AcceptButton = this.btnRegister;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(192F, 192F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(248)))), ((int)(((byte)(250)))), ((int)(((byte)(252)))));
+            this.ClientSize = new System.Drawing.Size(1600, 1440);
+            this.Controls.Add(this.pnlCard);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.Margin = new System.Windows.Forms.Padding(6);
+            this.MaximizeBox = true;
             this.Name = "RegisterForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "MarkTogether — Đăng ký";
+            this.pnlCard.ResumeLayout(false);
+            this.pnlCard.PerformLayout();
+            this.pnlUsername.ResumeLayout(false);
+            this.pnlUsername.PerformLayout();
+            this.pnlEmail.ResumeLayout(false);
+            this.pnlEmail.PerformLayout();
+            this.pnlPassword.ResumeLayout(false);
+            this.pnlPassword.PerformLayout();
+            this.pnlConfirmPassword.ResumeLayout(false);
+            this.pnlConfirmPassword.PerformLayout();
             this.ResumeLayout(false);
+
         }
         #endregion
 

@@ -12,10 +12,13 @@ namespace MarkTogether.Client
         {
             InitializeComponent();
             Load += RegisterForm_Load;
+            Resize += (s, e) => CenterCard();
         }
 
         private void RegisterForm_Load(object sender, EventArgs e)
         {
+            CenterCard();
+
             UiFactory.StyleAsCard(pnlCard);
             UiFactory.StylePrimaryButton(btnRegister);
             UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
@@ -31,6 +34,12 @@ namespace MarkTogether.Client
             WireInputFocus(pnlEmail, txtEmail);
             WireInputFocus(pnlPassword, txtPassword);
             WireInputFocus(pnlConfirmPassword, txtConfirmPassword);
+        }
+
+        private void CenterCard()
+        {
+            pnlCard.Left = Math.Max(0, (ClientSize.Width - pnlCard.Width) / 2);
+            pnlCard.Top = Math.Max(0, (ClientSize.Height - pnlCard.Height) / 2);
         }
 
         private void WireInputFocus(Panel panel, TextBox tb)
@@ -84,7 +93,7 @@ namespace MarkTogether.Client
                 // Disconnect nếu đang có connection cũ (từ LoginForm fail trước đó)
                 if (SocketClient.Instance.IsLoggedIn)
                     SocketClient.Instance.Disconnect();
-                SocketClient.Instance.Connect("localhost", 5000);
+                SocketClient.Instance.Connect("159.203.184.87", 5000);
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Register(username, email, password);
 
                 if (result.Success)

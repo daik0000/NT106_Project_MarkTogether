@@ -98,8 +98,8 @@ namespace MarkTogether.Client
             this.Controls.Add(this.lblPrompt);
             this.Controls.Add(this.lblPreview);
             this.Controls.Add(this.lblTitle);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
             this.Name = "NewCommentForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;

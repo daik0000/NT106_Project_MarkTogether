@@ -12,10 +12,13 @@ namespace MarkTogether.Client
         {
             InitializeComponent();
             Load += LoginForm_Load;
+            Resize += (s, e) => CenterCard();
         }
 
         private void LoginForm_Load(object sender, EventArgs e)
         {
+            CenterCard();
+
             // Apply rounded styling cho card / button
             UiFactory.StyleAsCard(pnlCard);
             UiFactory.StylePrimaryButton(btnLogin);
@@ -29,6 +32,12 @@ namespace MarkTogether.Client
             // Focus highlight cho input
             WireInputFocus(pnlUsername, txtUsername);
             WireInputFocus(pnlPassword, txtPassword);
+        }
+
+        private void CenterCard()
+        {
+            pnlCard.Left = Math.Max(0, (ClientSize.Width - pnlCard.Width) / 2);
+            pnlCard.Top = Math.Max(0, (ClientSize.Height - pnlCard.Height) / 2);
         }
 
         private void WireInputFocus(Panel panel, TextBox tb)
@@ -72,7 +81,7 @@ namespace MarkTogether.Client
                 btnLogin.Text = "Đang đăng nhập...";
                 ClearError();
 
-                SocketClient.Instance.Connect("localhost", 5000);
+                SocketClient.Instance.Connect("159.203.184.87", 5000);
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
 
                 if (result.Success)
@@ -130,5 +139,6 @@ namespace MarkTogether.Client
                 e.SuppressKeyPress = true;
             }
         }
+
     }
 }
