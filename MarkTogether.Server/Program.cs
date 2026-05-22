@@ -38,16 +38,18 @@ namespace MarkTogether.Server
             // 1. Bật Dapper mapping snake_case (PostgreSQL) ↔ PascalCase (C#)
             Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
+            int port = ResolvePort();
+
             Console.WriteLine("╔════════════════════════════════════════╗");
             Console.WriteLine("║     MarkTogether Server v1.0          ║");
             Console.WriteLine("╠════════════════════════════════════════╣");
-            Console.WriteLine("║  TCP Socket: port 5000                ║");
-            Console.WriteLine($"║  Mode: {(isService ? "Service" : "Interactive")}                 ║");
+            Console.WriteLine($"║  TCP Socket: port {port,-5}             ║");
+            Console.WriteLine($"║  Mode: {(isService ? "Service" : "Interactive"),-20}║");
             Console.WriteLine("╚════════════════════════════════════════╝");
             Console.WriteLine();
 
             // 2. Khởi động TCP Socket Server
-            var server = new SocketServer(5000);
+            var server = new SocketServer(port);
             Task.Run(() => server.StartAsync());
 
             if (isService)
@@ -71,6 +73,24 @@ namespace MarkTogether.Server
 
             Console.WriteLine("[Server] Đang tắt...");
             server.Stop();
+        }
+
+        private static int ResolvePort()
+        {
+            const int defaultPort = 5000;
+            string rawPort = Environment.GetEnvironmentVariable("MARKTOGETHER_PORT");
+
+            if (string.IsNullOrWhiteSpace(rawPort))
+                return defaultPort;
+
+            int parsedPort;
+            if (!int.TryParse(rawPort, out parsedPort) || parsedPort < 1 || parsedPort > 65535)
+            {
+                Console.WriteLine($"[Config] MARKTOGETHER_PORT không hợp lệ ('{rawPort}'), fallback về {defaultPort}.");
+                return defaultPort;
+            }
+
+            return parsedPort;
         }
 
         private static Assembly ResolveMissingAssembly(object sender, ResolveEventArgs args)

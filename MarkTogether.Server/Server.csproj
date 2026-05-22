@@ -67,6 +67,11 @@
     </Reference>
     <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.0.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Text.Encodings.Web, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Text.Encodings.Web.4.7.1\lib\net461\System.Text.Encodings.Web.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="System.Text.Json, Version=4.0.1.2, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Text.Json.4.7.2\lib\net461\System.Text.Json.dll</HintPath>
@@ -89,6 +94,7 @@
     <Compile Include="Database\Models\DocumentShare.cs" />
     <Compile Include="Database\Models\DocumentVersion.cs" />
     <Compile Include="Database\Models\Image.cs" />
+    <Compile Include="Database\Models\SharingLink.cs" />
     <Compile Include="Database\Models\User.cs" />
     <Compile Include="Database\Repositories\ChatRepository.cs" />
     <Compile Include="Database\Repositories\CommentRepository.cs" />
@@ -96,6 +102,7 @@
     <Compile Include="Database\Repositories\DocumentShareRepository.cs" />
     <Compile Include="Database\Repositories\DocumentVersionRepository.cs" />
     <Compile Include="Database\Repositories\ImageRepository.cs" />
+    <Compile Include="Database\Repositories\SharingLinkRepository.cs" />
     <Compile Include="Database\Repositories\UserRepository.cs" />
     <Compile Include="OT\DocumentState.cs" />
     <Compile Include="OT\DocumentStateManager.cs" />
@@ -103,9 +110,13 @@
     <Compile Include="Network\ClientHandler.cs" />
     <Compile Include="Network\SessionManager.cs" />
     <Compile Include="Network\SocketServer.cs" />
+    <Compile Include="Services\AIEditPlanValidator.cs" />
     <Compile Include="Services\AISuggestionService.cs" />
     <Compile Include="Services\AuthService.cs" />
+    <Compile Include="Services\DocumentPermissionService.cs" />
     <Compile Include="Services\ImageStorageService.cs" />
+    <Compile Include="Services\ImageValidator.cs" />
+    <Compile Include="Services\SecureTokenGenerator.cs" />
     <Compile Include="Services\ShareCodeGenerator.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -113,6 +124,7 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="Database\Scripts\schema_init.sql" />
+    <None Include="Database\Scripts\migration_v2.sql" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
