@@ -3,12 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
+using MarkTogether.Client.Services;
 using MarkTogether.Client.UI;
 using MarkTogether.Shared;
 using Markdig;
+using Newtonsoft.Json;
 
 namespace MarkTogether.Client
 {
@@ -25,6 +28,7 @@ namespace MarkTogether.Client
         private readonly string _docTitle;
         private readonly string _initialContent;
         private readonly Timer _opFlushTimer;
+        private readonly Timer _autosaveTimer;
         private string _lastMarkdownText = string.Empty;
         private PendingOpType? _pendingOpType;
         private int _pendingOpStartPos;
@@ -34,9 +38,22 @@ namespace MarkTogether.Client
         private string _permission = "viewer";
         private string _shareCode;
         private bool _suppressOpTracking;
+        private bool _hasUnsavedChanges;
+        private bool _isAutosaving;
+        private string _lastSavedContent = string.Empty;
         private readonly List<CommentDto> _comments = new List<CommentDto>();
+        private readonly Stack<string> _aiUndoStack = new Stack<string>();
+        private const int AiUndoMaxDepth = 10;
+
+        // ─── Paste handling ────────────────────────────────────────
+        private volatile bool _isPasting;
+        private readonly object _pasteLock = new object();
+        private readonly Queue<string> _pasteChunkQueue = new Queue<string>();
+        private Task _pasteSendTask;
 
         private const int MaxCharsPerPacket = 5;
+        private const int AutosaveIntervalMs = 30000;
+        private const int PasteThresholdChars = 20;
 
         private enum PendingOpType { Insert, Delete }
 
@@ -124,7 +141,11 @@ namespace MarkTogether.Client
             _opFlushTimer = new Timer { Interval = 250 };
             _opFlushTimer.Tick += OpFlushTimer_Tick;
 
+            _autosaveTimer = new Timer { Interval = AutosaveIntervalMs };
+            _autosaveTimer.Tick += AutosaveTimer_Tick;
+
             webPreview.TabStop = false;
+            txtRawMarkdown.ContextMenu = new ContextMenu();
 
             Shown += TypeRenderForm_Shown;
 
@@ -138,7 +159,10 @@ namespace MarkTogether.Client
             ApplyTheme();
 
             _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
+            _lastSavedContent = _lastMarkdownText;
             _trackRealtimeOps = !string.IsNullOrWhiteSpace(_docId);
+            if (_trackRealtimeOps)
+                _autosaveTimer.Start();
 
             // Subscribe push events
             if (!string.IsNullOrWhiteSpace(_docId))
@@ -440,18 +464,66 @@ namespace MarkTogether.Client
 
         private void txtRawMarkdown_TextChanged(object sender, EventArgs e)
         {
-            if (!_suppressOpTracking)
+            // Bọc toàn bộ handler để bug bất kỳ trong delta/queue không làm crash WinForms message pump.
+            try
             {
-                TrackRealtimeEditOps(txtRawMarkdown.Text ?? string.Empty);
+                if (!_suppressOpTracking)
+                {
+                    TrackRealtimeEditOps(txtRawMarkdown.Text ?? string.Empty);
+                }
+                else
+                {
+                    _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
+                }
+
+                if (!_suppressOpTracking && !string.IsNullOrWhiteSpace(_docId))
+                {
+                    _hasUnsavedChanges = (txtRawMarkdown.Text ?? string.Empty) != _lastSavedContent;
+                }
+
+                _renderRequestVersion++;
+                _renderDebounceTimer.Stop();
+                _renderDebounceTimer.Start();
             }
-            else
+            catch (Exception ex)
             {
-                _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
+                // KHÔNG log nội dung văn bản — chỉ log độ dài + exception để chẩn đoán
+                Logger.Log($"[Editor] TextChanged exception (textLen={(txtRawMarkdown.Text ?? string.Empty).Length}): {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private async void AutosaveTimer_Tick(object sender, EventArgs e)
+        {
+            if (_isAutosaving || !_hasUnsavedChanges || string.IsNullOrWhiteSpace(_docId))
+                return;
+
+            bool canEdit = _permission == "owner" || _permission == "editor";
+            if (!canEdit || !SocketClient.Instance.IsLoggedIn)
+                return;
+
+            string content = txtRawMarkdown.Text ?? string.Empty;
+            if (content == _lastSavedContent)
+            {
+                _hasUnsavedChanges = false;
+                return;
             }
 
-            _renderRequestVersion++;
-            _renderDebounceTimer.Stop();
-            _renderDebounceTimer.Start();
+            _isAutosaving = true;
+            try
+            {
+                await Task.Run(() => SocketClient.Instance.SaveDocument(_docId, content));
+                _lastSavedContent = content;
+                _hasUnsavedChanges = false;
+                Text = $"MarkTogether - {_docTitle} (tự lưu lúc {DateTime.Now:HH:mm:ss})";
+            }
+            catch (Exception ex)
+            {
+                Text = $"MarkTogether - {_docTitle} (tự lưu lỗi: {ex.Message})";
+            }
+            finally
+            {
+                _isAutosaving = false;
+            }
         }
 
         private void TrackRealtimeEditOps(string newText)
@@ -612,26 +684,15 @@ namespace MarkTogether.Client
         private void SendCurrentPendingChunk(string chunk)
         {
             if (!_pendingOpType.HasValue || string.IsNullOrEmpty(chunk) || string.IsNullOrWhiteSpace(_docId)) return;
+            if (!_trackRealtimeOps || !SocketClient.Instance.IsLoggedIn) return;
+            if (_permission != "owner" && _permission != "editor") return;
 
-            var ops = new List<EditOpItem>
+            lock (_pasteLock)
             {
-                new EditOpItem
-                {
-                    pos = _pendingOpStartPos,
-                    text = chunk,
-                    timestamp = DateTime.UtcNow
-                }
-            };
-
-            try
-            {
-                if (_pendingOpType.Value == PendingOpType.Insert)
-                    SocketClient.Instance.SendInsertOps(_docId, _clientRevision, ops);
-                else
-                    SocketClient.Instance.SendDeleteOps(_docId, _clientRevision, ops);
-                _clientRevision++;
+                char op = _pendingOpType.Value == PendingOpType.Insert ? 'I' : 'D';
+                _pasteChunkQueue.Enqueue($"{op}|{_pendingOpStartPos}|{chunk}");
             }
-            catch { /* không phá vỡ flow gõ */ }
+            EnsurePasteSenderRunning();
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -740,9 +801,30 @@ namespace MarkTogether.Client
         {
             int requestVersion = _renderRequestVersion;
             string markdown = txtRawMarkdown.Text ?? string.Empty;
+            int markdownLen = markdown.Length;
             string htmlBody;
-            try { htmlBody = await Task.Run(() => Markdown.ToHtml(markdown, _pipeline)); }
-            catch { return; }
+
+            // Dùng Stopwatch (background-safe) để đo render. KHÔNG log nội dung văn bản
+            // để tránh lộ dữ liệu — chỉ log độ dài + thời gian + exception nếu có.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                string renderMarkdown = await Task.Run(() => PrepareMarkdownImagesForPreview(markdown));
+                htmlBody = await Task.Run(() => Markdown.ToHtml(renderMarkdown, _pipeline));
+                sw.Stop();
+
+                // Chỉ log khi render chậm để tránh nhiễu file log
+                if (sw.ElapsedMilliseconds > 500)
+                {
+                    Logger.Log($"[Render] slow markdown render: {sw.ElapsedMilliseconds}ms textLen={markdownLen}");
+                }
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                Logger.Log($"[Render] markdown render FAILED after {sw.ElapsedMilliseconds}ms textLen={markdownLen}: {ex.GetType().Name}: {ex.Message}");
+                return;
+            }
 
             if (requestVersion != _renderRequestVersion || IsDisposed) return;
 
@@ -782,7 +864,12 @@ namespace MarkTogether.Client
             {
                 await webPreview.CoreWebView2.ExecuteScriptAsync($"window.updatePreviewFromBase64('{base64Html}');");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // WebView2 có thể đang busy / mất context. Không crash, chỉ log để chẩn đoán
+                // các trường hợp freeze trên máy người dùng.
+                Logger.Log($"[Preview] ExecuteScriptAsync failed (htmlLen={(htmlBody ?? string.Empty).Length}): {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -898,10 +985,10 @@ namespace MarkTogether.Client
                         return;
                     }
 
-                    // Cache file local để WebView2 hiển thị qua file:///
-                    string localPath = await CacheImageLocallyAsync(resp.imageId, mime, bytes);
-                    string urlInMd = "file:///" + localPath.Replace('\\', '/');
-                    string snippet = $"![{Path.GetFileNameWithoutExtension(fileName)}]({urlInMd})";
+                    // Lưu markdown bằng imageId server, không lưu đường dẫn file:/// local.
+                    // Khi preview, PrepareMarkdownImagesForPreview sẽ tải/cache ảnh rồi đổi tạm sang file:///.
+                    await CacheImageLocallyAsync(resp.imageId, mime, bytes);
+                    string snippet = $"![{Path.GetFileNameWithoutExtension(fileName)}](marktogether-image://{resp.imageId})";
 
                     int caret = txtRawMarkdown.SelectionStart;
                     string text = txtRawMarkdown.Text ?? "";
@@ -929,6 +1016,60 @@ namespace MarkTogether.Client
                 case ".bmp": return "image/bmp";
                 default: return "application/octet-stream";
             }
+        }
+
+        private string PrepareMarkdownImagesForPreview(string markdown)
+        {
+            if (string.IsNullOrEmpty(markdown)) return markdown ?? string.Empty;
+
+            return Regex.Replace(
+                markdown,
+                @"!\[([^\]]*)\]\(marktogether-image://([^)]+)\)",
+                match =>
+                {
+                    string alt = match.Groups[1].Value;
+                    string imageId = match.Groups[2].Value.Trim();
+
+                    try
+                    {
+                        string localPath = EnsureImageCached(imageId);
+                        if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
+                            return match.Value;
+
+                        // WebView2 NavigateToString/ExecuteScript đôi khi không load ổn định file:/// local.
+                        // Dùng data URI để ảnh render độc lập với quyền truy cập file local.
+                        string mime = GuessMime(localPath);
+                        string base64 = Convert.ToBase64String(File.ReadAllBytes(localPath));
+                        string dataUri = $"data:{mime};base64,{base64}";
+                        return $"![{alt}]({dataUri})";
+                    }
+                    catch
+                    {
+                        return match.Value;
+                    }
+                });
+        }
+
+        private string EnsureImageCached(string imageId)
+        {
+            if (string.IsNullOrWhiteSpace(imageId)) return null;
+
+            string dir = Path.Combine(Path.GetTempPath(), "MarkTogether", _docId ?? "any");
+            Directory.CreateDirectory(dir);
+
+            foreach (var path in Directory.GetFiles(dir, imageId + ".*"))
+            {
+                if (File.Exists(path)) return path;
+            }
+
+            var resp = SocketClient.Instance.GetImage(imageId);
+            if (resp == null || resp.data == null || resp.data.Length == 0)
+                return null;
+
+            string ext = MimeToExt(resp.mimeType);
+            string localPath = Path.Combine(dir, imageId + ext);
+            File.WriteAllBytes(localPath, resp.data);
+            return localPath;
         }
 
         private async Task<string> CacheImageLocallyAsync(string imageId, string mime, byte[] data)
@@ -1147,32 +1288,122 @@ namespace MarkTogether.Client
         // ═══════════════════════════════════════════════════════════
         //  AI
         // ═══════════════════════════════════════════════════════════
+        private void btnAiSettings_Click(object sender, EventArgs e)
+        {
+            using (var dlg = new AISettingsForm())
+            {
+                dlg.ShowDialog(this);
+            }
+        }
+
+        private void chkAiEditMode_CheckedChanged(object sender, EventArgs e)
+        {
+            bool on = chkAiEditMode.Checked;
+            cmbAiMode.Enabled = !on;
+
+            if (on && txtRawMarkdown.ReadOnly)
+            {
+                MessageBox.Show(
+                    "Bạn chỉ có quyền xem tài liệu này. Action mode sẽ bị từ chối khi gửi.",
+                    "Trợ lý AI", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void btnAiUndo_Click(object sender, EventArgs e)
+        {
+            if (_aiUndoStack.Count == 0) return;
+            if (txtRawMarkdown.ReadOnly)
+            {
+                MessageBox.Show("Tài liệu đang ở chế độ chỉ xem.", "Trợ lý AI");
+                return;
+            }
+
+            string snapshot = _aiUndoStack.Pop();
+            txtRawMarkdown.Text = snapshot;
+            txtAiHistory.AppendText($"AI ↶ Hoàn tác.{Environment.NewLine}{Environment.NewLine}");
+            btnAiUndo.Enabled = _aiUndoStack.Count > 0;
+        }
+
         private async void btnAiSend_Click(object sender, EventArgs e)
         {
             string prompt = (txtAiPrompt.Text ?? "").Trim();
             string modeLabel = cmbAiMode.SelectedItem?.ToString() ?? "Hỏi đáp";
             string mode = MapAiModeLabelToKey(modeLabel);
             string ctx = txtRawMarkdown.SelectedText ?? "";
+            bool editMode = chkAiEditMode.Checked;
 
-            if (string.IsNullOrEmpty(prompt) && string.IsNullOrEmpty(ctx))
+            if (editMode && txtRawMarkdown.ReadOnly)
+            {
+                MessageBox.Show("Bạn chỉ có quyền xem, không thể dùng AI để sửa văn bản.",
+                    "Trợ lý AI", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(prompt) && (!editMode && string.IsNullOrEmpty(ctx)))
             {
                 MessageBox.Show("Hãy nhập câu hỏi hoặc chọn đoạn văn bản để làm ngữ cảnh.", "AI");
                 return;
             }
 
-            txtAiHistory.AppendText($"[{modeLabel}] Bạn: {prompt}{Environment.NewLine}");
-            if (!string.IsNullOrEmpty(ctx))
+            if (editMode && string.IsNullOrEmpty(prompt))
+            {
+                MessageBox.Show("Hãy mô tả thao tác AI cần thực hiện.", "AI");
+                return;
+            }
+
+            var aiCfg = AISettingsStore.Load();
+            if (string.IsNullOrWhiteSpace(aiCfg.ApiKey))
+            {
+                var result = MessageBox.Show(
+                    "Bạn chưa cấu hình API key cho AI. Mở 'Cài đặt AI' bây giờ?",
+                    "Trợ lý AI",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+                if (result == DialogResult.Yes)
+                    btnAiSettings_Click(sender, e);
+                return;
+            }
+
+            txtAiHistory.AppendText($"[{(editMode ? "Action mode" : modeLabel)}] Bạn: {prompt}{Environment.NewLine}");
+            if (!editMode && !string.IsNullOrEmpty(ctx))
                 txtAiHistory.AppendText($"  (ngữ cảnh: {Truncate(ctx, 80)}){Environment.NewLine}");
             txtAiPrompt.Clear();
 
             try
             {
                 btnAiSend.Enabled = false;
-                var resp = await Task.Run(() => SocketClient.Instance.AskAI(mode, prompt, ctx, _docId));
-                if (resp.success)
-                    txtAiHistory.AppendText($"AI: {resp.text}{Environment.NewLine}{Environment.NewLine}");
-                else
+                var resp = await Task.Run(() =>
+                {
+                    if (editMode)
+                    {
+                        return SocketClient.Instance.AskAI(
+                            "chat", prompt, "", _docId,
+                            aiCfg.ApiKey, aiCfg.Model, aiCfg.Provider,
+                            actionMode: "edit",
+                            documentText: txtRawMarkdown.Text ?? "",
+                            selectionStart: txtRawMarkdown.SelectionStart,
+                            selectionEnd: txtRawMarkdown.SelectionStart + txtRawMarkdown.SelectionLength,
+                            cursorPosition: txtRawMarkdown.SelectionStart);
+                    }
+
+                    return SocketClient.Instance.AskAI(
+                        mode, prompt, ctx, _docId,
+                        aiCfg.ApiKey, aiCfg.Model, aiCfg.Provider);
+                });
+
+                if (!resp.success)
+                {
                     txtAiHistory.AppendText($"AI lỗi: {resp.message}{Environment.NewLine}{Environment.NewLine}");
+                }
+                else if (resp.kind == "edit_plan" && !string.IsNullOrEmpty(resp.editPlanJson))
+                {
+                    HandleEditPlanResponse(resp.editPlanJson);
+                }
+                else
+                {
+                    txtAiHistory.AppendText($"AI: {resp.text}{Environment.NewLine}{Environment.NewLine}");
+                }
+
                 txtAiHistory.SelectionStart = txtAiHistory.TextLength;
                 txtAiHistory.ScrollToCaret();
             }
@@ -1184,6 +1415,87 @@ namespace MarkTogether.Client
             {
                 btnAiSend.Enabled = true;
             }
+        }
+
+        private void HandleEditPlanResponse(string planJson)
+        {
+            AiEditPlan plan;
+            try
+            {
+                plan = JsonConvert.DeserializeObject<AiEditPlan>(planJson);
+            }
+            catch (Exception ex)
+            {
+                txtAiHistory.AppendText($"AI lỗi parse plan: {ex.Message}{Environment.NewLine}");
+                return;
+            }
+
+            if (plan == null) return;
+
+            string oldText = txtRawMarkdown.Text ?? "";
+            var applyResult = AIEditPlanApplier.Apply(oldText, plan);
+            if (!applyResult.Ok)
+            {
+                txtAiHistory.AppendText($"AI lỗi áp dụng plan: {applyResult.Error}{Environment.NewLine}");
+                return;
+            }
+
+            using (var dlg = new AIEditPreviewForm(oldText, plan, applyResult.NewText))
+            {
+                var dr = dlg.ShowDialog(this);
+                if (dr == DialogResult.OK)
+                {
+                    if (txtRawMarkdown.ReadOnly)
+                    {
+                        MessageBox.Show("Tài liệu chuyển sang chế độ chỉ xem.", "Trợ lý AI");
+                        return;
+                    }
+
+                    if ((txtRawMarkdown.Text ?? "") != oldText)
+                    {
+                        var confirm = MessageBox.Show(
+                            "Tài liệu đã thay đổi từ lúc AI phân tích. Vẫn áp dụng?",
+                            "Trợ lý AI", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        if (confirm != DialogResult.Yes) return;
+
+                        applyResult = AIEditPlanApplier.Apply(txtRawMarkdown.Text ?? "", plan);
+                        if (!applyResult.Ok)
+                        {
+                            txtAiHistory.AppendText($"AI lỗi áp dụng plan (re-apply): {applyResult.Error}{Environment.NewLine}");
+                            return;
+                        }
+                    }
+
+                    TrimAiUndoStackIfNeeded();
+                    _aiUndoStack.Push(txtRawMarkdown.Text ?? "");
+
+                    txtRawMarkdown.Text = applyResult.NewText;
+                    btnAiUndo.Enabled = true;
+
+                    txtAiHistory.AppendText($"AI ✓ Đã áp dụng: {plan.Summary}{Environment.NewLine}{Environment.NewLine}");
+                }
+                else if (dr == DialogResult.Retry)
+                {
+                    txtAiHistory.AppendText($"AI (gợi ý không áp dụng): {plan.Summary}{Environment.NewLine}");
+                    if (!string.IsNullOrEmpty(plan.Notes))
+                        txtAiHistory.AppendText($"  Ghi chú: {plan.Notes}{Environment.NewLine}");
+                    txtAiHistory.AppendText(Environment.NewLine);
+                }
+                else
+                {
+                    txtAiHistory.AppendText($"AI ✗ Đã từ chối thay đổi.{Environment.NewLine}{Environment.NewLine}");
+                }
+            }
+        }
+
+        private void TrimAiUndoStackIfNeeded()
+        {
+            if (_aiUndoStack.Count < AiUndoMaxDepth) return;
+
+            var arr = _aiUndoStack.ToArray();
+            _aiUndoStack.Clear();
+            for (int i = arr.Length - 2; i >= 0; i--)
+                _aiUndoStack.Push(arr[i]);
         }
 
         private static string Truncate(string s, int len)
@@ -1233,7 +1545,16 @@ namespace MarkTogether.Client
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // Flush trước để đẩy chunk typing cuối vào queue, sau đó mới wait
             FlushPendingEditOperation();
+
+            try
+            {
+                var task = _pasteSendTask;
+                if (task != null && !task.IsCompleted)
+                    task.Wait(TimeSpan.FromSeconds(3));
+            }
+            catch { /* ignore — vẫn tiếp tục đóng form */ }
 
             if (!string.IsNullOrWhiteSpace(_docId)
                 && SocketClient.Instance.IsLoggedIn
@@ -1251,6 +1572,232 @@ namespace MarkTogether.Client
             }
 
             base.OnFormClosing(e);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (txtRawMarkdown != null
+                && txtRawMarkdown.Focused
+                && !txtRawMarkdown.ReadOnly
+                && IsPasteKeyCombo(keyData))
+            {
+                try
+                {
+                    if (TryHandlePaste())
+                        return true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Paste] Intercept failed: {ex.Message}");
+                }
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private static bool IsPasteKeyCombo(Keys keyData)
+        {
+            return keyData == (Keys.Control | Keys.V)
+                || keyData == (Keys.Shift | Keys.Insert);
+        }
+
+        private bool TryHandlePaste()
+        {
+            string clipboardText = null;
+            try
+            {
+                if (Clipboard.ContainsText())
+                    clipboardText = Clipboard.GetText(TextDataFormat.UnicodeText);
+            }
+            catch
+            {
+                clipboardText = null;
+            }
+
+            if (string.IsNullOrEmpty(clipboardText))
+                return false;
+
+            clipboardText = NormalizePastedText(clipboardText);
+
+            if (clipboardText.Length < PasteThresholdChars)
+                return false;
+
+            PerformFastPaste(clipboardText);
+            return true;
+        }
+
+        private static string NormalizePastedText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            return Regex.Replace(text, @"\r\n|\r|\n", "\r\n");
+        }
+
+        private void PerformFastPaste(string pasted)
+        {
+            if (string.IsNullOrEmpty(pasted)) return;
+
+            FlushPendingEditOperation();
+
+            int selStart = txtRawMarkdown.SelectionStart;
+            int selLength = txtRawMarkdown.SelectionLength;
+            string currentText = txtRawMarkdown.Text ?? string.Empty;
+            string selectedText = selLength > 0
+                ? currentText.Substring(selStart, selLength)
+                : string.Empty;
+
+            _isPasting = true;
+            _suppressOpTracking = true;
+            try
+            {
+                txtRawMarkdown.SelectedText = pasted;
+
+                int newCaret = selStart + pasted.Length;
+                txtRawMarkdown.SelectionStart = newCaret;
+                txtRawMarkdown.SelectionLength = 0;
+
+                _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
+                _hasUnsavedChanges = _lastMarkdownText != _lastSavedContent;
+            }
+            finally
+            {
+                _suppressOpTracking = false;
+            }
+
+            _renderRequestVersion++;
+            _renderDebounceTimer.Stop();
+            _renderDebounceTimer.Start();
+
+            bool needSendOps = _trackRealtimeOps
+                && !string.IsNullOrWhiteSpace(_docId)
+                && SocketClient.Instance.IsLoggedIn
+                && (_permission == "owner" || _permission == "editor");
+
+            if (!needSendOps)
+            {
+                _isPasting = false;
+                return;
+            }
+
+            EnqueuePasteOperations(selStart, selectedText, pasted);
+            EnsurePasteSenderRunning();
+        }
+
+        private void EnqueuePasteOperations(int basePos, string replacedSelection, string pasted)
+        {
+            lock (_pasteLock)
+            {
+                if (!string.IsNullOrEmpty(replacedSelection))
+                {
+                    for (int i = 0; i < replacedSelection.Length;)
+                    {
+                        int size = SafeChunkLength(replacedSelection, i, MaxCharsPerPacket);
+                        string chunk = replacedSelection.Substring(i, size);
+                        _pasteChunkQueue.Enqueue($"D|{basePos}|{chunk}");
+                        i += size;
+                    }
+                }
+
+                int insertPos = basePos;
+                for (int i = 0; i < pasted.Length;)
+                {
+                    int size = SafeChunkLength(pasted, i, MaxCharsPerPacket);
+                    string chunk = pasted.Substring(i, size);
+                    _pasteChunkQueue.Enqueue($"I|{insertPos}|{chunk}");
+                    insertPos += size;
+                    i += size;
+                }
+            }
+        }
+
+        private static int SafeChunkLength(string text, int start, int maxLen)
+        {
+            int len = Math.Min(maxLen, text.Length - start);
+            if (len <= 0) return 0;
+
+            if (len < text.Length - start && char.IsHighSurrogate(text[start + len - 1]))
+                len--;
+
+            return Math.Max(1, len);
+        }
+
+        private void EnsurePasteSenderRunning()
+        {
+            lock (_pasteLock)
+            {
+                if (_pasteSendTask != null && !_pasteSendTask.IsCompleted)
+                    return;
+
+                _pasteSendTask = Task.Run((Action)PasteSenderLoop);
+            }
+        }
+
+        private void PasteSenderLoop()
+        {
+            try
+            {
+                while (true)
+                {
+                    string entry;
+                    lock (_pasteLock)
+                    {
+                        if (_pasteChunkQueue.Count == 0)
+                        {
+                            _isPasting = false;
+                            return;
+                        }
+
+                        entry = _pasteChunkQueue.Dequeue();
+                    }
+
+                    char opChar = entry[0];
+                    int firstBar = 1;
+                    int secondBar = entry.IndexOf('|', firstBar + 1);
+                    if (secondBar < 0) continue;
+
+                    int pos = int.Parse(entry.Substring(firstBar + 1, secondBar - firstBar - 1));
+                    string text = entry.Substring(secondBar + 1);
+
+                    var ops = new List<EditOpItem>
+                    {
+                        new EditOpItem
+                        {
+                            pos = pos,
+                            text = text,
+                            timestamp = DateTime.UtcNow
+                        }
+                    };
+
+                    try
+                    {
+                        int rev = _clientRevision;
+                        if (opChar == 'I')
+                            SocketClient.Instance.SendInsertOps(_docId, rev, ops);
+                        else
+                            SocketClient.Instance.SendDeleteOps(_docId, rev, ops);
+
+                        System.Threading.Interlocked.Increment(ref _clientRevision);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Paste] Send chunk failed: {ex.Message}");
+                        if (!SocketClient.Instance.IsLoggedIn)
+                        {
+                            lock (_pasteLock)
+                            {
+                                _pasteChunkQueue.Clear();
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                lock (_pasteLock)
+                {
+                    _isPasting = false;
+                }
+            }
         }
     }
 }

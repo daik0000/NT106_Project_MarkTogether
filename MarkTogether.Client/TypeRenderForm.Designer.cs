@@ -58,6 +58,9 @@ namespace MarkTogether.Client
             this.cmbAiMode = new System.Windows.Forms.ComboBox();
             this.txtAiPrompt = new System.Windows.Forms.TextBox();
             this.btnAiSend = new System.Windows.Forms.Button();
+            this.btnAiSettings = new System.Windows.Forms.Button();
+            this.chkAiEditMode = new System.Windows.Forms.CheckBox();
+            this.btnAiUndo = new System.Windows.Forms.Button();
 
             this.pnlHeader.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitOuter)).BeginInit();
@@ -263,23 +266,20 @@ namespace MarkTogether.Client
             this.lstChat.Name = "lstChat";
             //
             this.pnlChatInput.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.pnlChatInput.Height = 64;
+            this.pnlChatInput.Height = AppTheme.InputHeight + AppTheme.SpaceSm * 2;
             this.pnlChatInput.BackColor = AppTheme.Surface;
-            this.pnlChatInput.Padding = new System.Windows.Forms.Padding(0, AppTheme.SpaceMd, 0, 0);
-            this.pnlChatInput.Controls.Add(this.btnChatSend);
+            this.pnlChatInput.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceSm);
             this.pnlChatInput.Controls.Add(this.txtChatInput);
+            this.pnlChatInput.Controls.Add(this.btnChatSend);
             //
-            this.txtChatInput.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right;
-            this.txtChatInput.Location = new System.Drawing.Point(0, 12);
-            this.txtChatInput.Size = new System.Drawing.Size(280, AppTheme.InputHeight);
+            this.txtChatInput.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtChatInput.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.txtChatInput.Font = AppTheme.Body;
             this.txtChatInput.Name = "txtChatInput";
             this.txtChatInput.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtChatInput_KeyDown);
             //
-            this.btnChatSend.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnChatSend.Location = new System.Drawing.Point(290, 12);
-            this.btnChatSend.Size = new System.Drawing.Size(90, AppTheme.ButtonHeight);
+            this.btnChatSend.Dock = System.Windows.Forms.DockStyle.Right;
+            this.btnChatSend.Width = 80;
             this.btnChatSend.Text = "Gửi";
             this.btnChatSend.Name = "btnChatSend";
             this.btnChatSend.Click += new System.EventHandler(this.btnChatSend_Click);
@@ -346,33 +346,52 @@ namespace MarkTogether.Client
             this.pnlAiInput.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.pnlAiInput.Height = 140;
             this.pnlAiInput.BackColor = AppTheme.Surface;
-            this.pnlAiInput.Padding = new System.Windows.Forms.Padding(0, AppTheme.SpaceMd, 0, 0);
-            this.pnlAiInput.Controls.Add(this.btnAiSend);
+            this.pnlAiInput.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceSm);
             this.pnlAiInput.Controls.Add(this.txtAiPrompt);
+            this.pnlAiInput.Controls.Add(this.btnAiSettings);
+            this.pnlAiInput.Controls.Add(this.btnAiUndo);
+            this.pnlAiInput.Controls.Add(this.btnAiSend);
             this.pnlAiInput.Controls.Add(this.cmbAiMode);
+            this.pnlAiInput.Controls.Add(this.chkAiEditMode);
+            //
+            this.chkAiEditMode.Dock = System.Windows.Forms.DockStyle.Top;
+            this.chkAiEditMode.Text = "AI có thể chỉnh sửa văn bản (Action mode)";
+            this.chkAiEditMode.Font = AppTheme.Body;
+            this.chkAiEditMode.AutoSize = true;
+            this.chkAiEditMode.Name = "chkAiEditMode";
+            this.chkAiEditMode.CheckedChanged += new System.EventHandler(this.chkAiEditMode_CheckedChanged);
             //
             this.cmbAiMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbAiMode.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.cmbAiMode.Items.AddRange(new object[] { "Hỏi đáp", "Tóm tắt", "Viết tiếp", "Dịch" });
-            this.cmbAiMode.Location = new System.Drawing.Point(0, 8);
-            this.cmbAiMode.Size = new System.Drawing.Size(140, 28);
+            this.cmbAiMode.Dock = System.Windows.Forms.DockStyle.Top;
             this.cmbAiMode.Font = AppTheme.Body;
             this.cmbAiMode.Name = "cmbAiMode";
             //
-            this.txtAiPrompt.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right;
+            this.txtAiPrompt.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtAiPrompt.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.txtAiPrompt.Font = AppTheme.Body;
-            this.txtAiPrompt.Location = new System.Drawing.Point(0, 44);
-            this.txtAiPrompt.Size = new System.Drawing.Size(280, 80);
             this.txtAiPrompt.Multiline = true;
             this.txtAiPrompt.Name = "txtAiPrompt";
             //
-            this.btnAiSend.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right;
-            this.btnAiSend.Location = new System.Drawing.Point(290, 44);
-            this.btnAiSend.Size = new System.Drawing.Size(90, 80);
+            this.btnAiSend.Dock = System.Windows.Forms.DockStyle.Right;
+            this.btnAiSend.Width = 80;
             this.btnAiSend.Text = "Gửi";
             this.btnAiSend.Name = "btnAiSend";
             this.btnAiSend.Click += new System.EventHandler(this.btnAiSend_Click);
+            //
+            this.btnAiSettings.Dock = System.Windows.Forms.DockStyle.Right;
+            this.btnAiSettings.Width = 90;
+            this.btnAiSettings.Text = "⚙ Cài đặt";
+            this.btnAiSettings.Name = "btnAiSettings";
+            this.btnAiSettings.Click += new System.EventHandler(this.btnAiSettings_Click);
+            //
+            this.btnAiUndo.Dock = System.Windows.Forms.DockStyle.Right;
+            this.btnAiUndo.Width = 100;
+            this.btnAiUndo.Text = "↶ Hoàn tác AI";
+            this.btnAiUndo.Name = "btnAiUndo";
+            this.btnAiUndo.Enabled = false;
+            this.btnAiUndo.Click += new System.EventHandler(this.btnAiUndo_Click);
             //
             // Form
             //
@@ -458,5 +477,8 @@ namespace MarkTogether.Client
         private System.Windows.Forms.ComboBox cmbAiMode;
         private System.Windows.Forms.TextBox txtAiPrompt;
         private System.Windows.Forms.Button btnAiSend;
+        private System.Windows.Forms.Button btnAiSettings;
+        private System.Windows.Forms.CheckBox chkAiEditMode;
+        private System.Windows.Forms.Button btnAiUndo;
     }
 }
