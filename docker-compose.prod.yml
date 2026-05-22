@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: marktogether-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${MARKTOGETHER_DB_NAME:-marktogether_db}
+      POSTGRES_USER: ${MARKTOGETHER_DB_USER:-marktogether_user}
+      POSTGRES_PASSWORD: ${MARKTOGETHER_DB_PASSWORD:?MARKTOGETHER_DB_PASSWORD is required}
+    ports:
+      # 2-server production: run this compose file on DB VPS.
+      # Use MARKTOGETHER_DB_BIND_ADDRESS=0.0.0.0 only when firewall allows 5432 from App VPS IP.
+      # Use 127.0.0.1 for local/single-server deployment.
+      - "${MARKTOGETHER_DB_BIND_ADDRESS:-127.0.0.1}:${MARKTOGETHER_DB_PORT:-5432}:5432"
+    volumes:
+      - /var/lib/marktogether/pg_data:/var/lib/postgresql/data
+      - ./MarkTogether.Server/Database/Scripts/schema_init.sql:/docker-entrypoint-initdb.d/01_schema_init.sql:ro
+      - ./MarkTogether.Server/Database/Scripts/migration_v2.sql:/docker-entrypoint-initdb.d/02_migration_v2.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MARKTOGETHER_DB_USER:-marktogether_user} -d ${MARKTOGETHER_DB_NAME:-marktogether_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
