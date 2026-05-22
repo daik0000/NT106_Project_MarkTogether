@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
@@ -69,6 +70,78 @@ namespace MarkTogether.Client
             LayoutHeaderButtons();
             LayoutActionBarButtons();
             LayoutFilterBar();
+
+            BuildDocumentContextMenu();
+        }
+
+        private void BuildDocumentContextMenu()
+        {
+            var menu = new ContextMenuStrip();
+            var miDelete = new ToolStripMenuItem("Xóa tài liệu");
+            miDelete.ShortcutKeyDisplayString = "Del";
+            miDelete.Click += async (s, _) => await DeleteSelectedDocumentAsync();
+            menu.Items.Add(miDelete);
+
+            // Chỉ enable menu xóa khi item được chọn là owner — tránh user thao tác rồi bị server reject
+            menu.Opening += (s, ev) =>
+            {
+                var doc = GetSelectedDocument();
+                miDelete.Enabled = doc != null
+                    && string.Equals(doc.permission, "owner", StringComparison.OrdinalIgnoreCase);
+                if (doc == null) ev.Cancel = true;
+            };
+
+            listDocuments.ContextMenuStrip = menu;
+        }
+
+        private DocInfo GetSelectedDocument()
+        {
+            if (listDocuments.SelectedItems.Count == 0) return null;
+            return listDocuments.SelectedItems[0].Tag as DocInfo;
+        }
+
+        private async Task DeleteSelectedDocumentAsync()
+        {
+            var doc = GetSelectedDocument();
+            if (doc == null || string.IsNullOrWhiteSpace(doc.docID)) return;
+
+            if (!string.Equals(doc.permission, "owner", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Chỉ chủ sở hữu mới có thể xóa tài liệu này.",
+                    "Xóa tài liệu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string title = string.IsNullOrWhiteSpace(doc.title) ? "(Không tiêu đề)" : doc.title;
+            var confirm = MessageBox.Show(
+                $"Xóa tài liệu \"{title}\"?\n\nThao tác này sẽ chuyển tài liệu vào trạng thái đã xóa và biến mất khỏi danh sách của bạn.",
+                "Xác nhận xóa",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                ToggleLoadingState(true);
+                var resp = await Task.Run(() => SocketClient.Instance.DeleteDocument(doc.docID));
+                if (resp == null || !resp.success)
+                {
+                    MessageBox.Show(resp?.message ?? "Xóa tài liệu thất bại.",
+                        "Xóa tài liệu", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                await LoadDocumentsAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Không thể xóa tài liệu.\n\nChi tiết: {ex.Message}",
+                    "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                ToggleLoadingState(false);
+            }
         }
 
         private async void HomeForm_Shown(object sender, EventArgs e)
@@ -156,6 +229,16 @@ namespace MarkTogether.Client
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 await LoadDocumentsAsync();
+                return;
+            }
+
+            // Phím Delete: chỉ kích hoạt khi đang focus danh sách + có item được chọn
+            // → tránh việc người dùng đang gõ trong ô join code vô tình xóa file.
+            if (e.KeyCode == Keys.Delete && listDocuments.Focused && listDocuments.SelectedItems.Count > 0)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                await DeleteSelectedDocumentAsync();
             }
         }
 
@@ -199,7 +282,15 @@ namespace MarkTogether.Client
                 {
                     ToggleLoadingState(true);
                     string filePath = openDialog.FileName;
-                    string content = await Task.Run(() => File.ReadAllText(filePath));
+                    // Đọc UTF-8 và normalize line endings → \r\n. Lý do: txtRawMarkdown
+                    // là System.Windows.Forms.TextBox multiline; nó KHÔNG hiển thị xuống dòng
+                    // với '\n' đơn lẻ. File .md viết trên Linux/macOS (LF) sẽ bị dính liền
+                    // nếu không normalize.
+                    string content = await Task.Run(() =>
+                    {
+                        string raw = File.ReadAllText(filePath, Encoding.UTF8);
+                        return raw.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+                    });
                     string title = Path.GetFileNameWithoutExtension(filePath);
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(title, content));
                     await LoadDocumentsAsync();

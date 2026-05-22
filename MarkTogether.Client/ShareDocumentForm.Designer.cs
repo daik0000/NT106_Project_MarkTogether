@@ -235,8 +235,8 @@ namespace MarkTogether.Client
             this.Controls.Add(this.grpInvite);
             this.Controls.Add(this.pnlShareCode);
             this.Controls.Add(this.lblShareCode);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
             this.Name = "ShareDocumentForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
