@@ -93,7 +93,7 @@ namespace MarkTogether.Client
                 // Disconnect nếu đang có connection cũ (từ LoginForm fail trước đó)
                 if (SocketClient.Instance.IsLoggedIn)
                     SocketClient.Instance.Disconnect();
-                SocketClient.Instance.Connect("159.203.184.87", 5000);
+                SocketClient.Instance.ConnectFromConfig();
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Register(username, email, password);
 
                 if (result.Success)

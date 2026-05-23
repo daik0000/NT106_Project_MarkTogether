@@ -163,7 +163,7 @@ namespace MarkTogether.Client
             {
                 try
                 {
-                    SocketClient.Instance.Connect("159.203.184.87", 5000);
+                    SocketClient.Instance.ConnectFromConfig();
                 }
                 catch
                 {

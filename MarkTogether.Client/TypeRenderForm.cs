@@ -1447,6 +1447,25 @@ namespace MarkTogether.Client
                 return;
             }
 
+            string aiProvider = string.IsNullOrWhiteSpace(aiCfg.Provider) ? "gemini" : aiCfg.Provider.Trim();
+            string aiModel = string.IsNullOrWhiteSpace(aiCfg.Model) ? "gemini-2.5-flash" : aiCfg.Model.Trim();
+            string aiApiKey = aiCfg.ApiKey;
+
+            // Snapshot UI state trước khi chuyển sang Task.Run để tránh cross-thread access.
+            string editDocumentText = null;
+            int editSelectionStart = 0;
+            int editSelectionEnd = 0;
+            int editCursorPosition = 0;
+            if (editMode)
+            {
+                editDocumentText = txtRawMarkdown.Text ?? "";
+                editSelectionStart = Math.Max(0, txtRawMarkdown.SelectionStart);
+                editSelectionEnd = Math.Max(editSelectionStart, editSelectionStart + txtRawMarkdown.SelectionLength);
+                if (editSelectionEnd > editDocumentText.Length)
+                    editSelectionEnd = editDocumentText.Length;
+                editCursorPosition = editSelectionStart;
+            }
+
             txtAiHistory.AppendText($"[{(editMode ? "Action mode" : modeLabel)}] Bạn: {prompt}{Environment.NewLine}");
             if (!editMode && !string.IsNullOrEmpty(ctx))
                 txtAiHistory.AppendText($"  (ngữ cảnh: {Truncate(ctx, 80)}){Environment.NewLine}");
@@ -1461,17 +1480,17 @@ namespace MarkTogether.Client
                     {
                         return SocketClient.Instance.AskAI(
                             "chat", prompt, "", _docId,
-                            aiCfg.ApiKey, aiCfg.Model, aiCfg.Provider,
+                            aiApiKey, aiModel, aiProvider,
                             actionMode: "edit",
-                            documentText: txtRawMarkdown.Text ?? "",
-                            selectionStart: txtRawMarkdown.SelectionStart,
-                            selectionEnd: txtRawMarkdown.SelectionStart + txtRawMarkdown.SelectionLength,
-                            cursorPosition: txtRawMarkdown.SelectionStart);
+                            documentText: editDocumentText,
+                            selectionStart: editSelectionStart,
+                            selectionEnd: editSelectionEnd,
+                            cursorPosition: editCursorPosition);
                     }
 
                     return SocketClient.Instance.AskAI(
                         mode, prompt, ctx, _docId,
-                        aiCfg.ApiKey, aiCfg.Model, aiCfg.Provider);
+                        aiApiKey, aiModel, aiProvider);
                 });
 
                 if (!resp.success)

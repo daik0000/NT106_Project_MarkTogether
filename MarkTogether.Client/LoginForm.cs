@@ -81,7 +81,7 @@ namespace MarkTogether.Client
                 btnLogin.Text = "Đang đăng nhập...";
                 ClearError();
 
-                SocketClient.Instance.Connect("159.203.184.87", 5000);
+                SocketClient.Instance.ConnectFromConfig();
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
 
                 if (result.Success)
@@ -124,7 +124,7 @@ namespace MarkTogether.Client
         {
             try
             {
-                SocketClient.Instance.Connect("159.203.184.87", 5000);
+                SocketClient.Instance.ConnectFromConfig();
             }
             catch
             {

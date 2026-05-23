@@ -1,0 +1,30 @@
+[Unit]
+Description=MarkTogether Load Balancing Gateway
+Documentation=file:/opt/marktogether/LB_DEPLOYMENT.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marktogether
+Group=marktogether
+WorkingDirectory=/opt/marktogether/lb
+EnvironmentFile=/etc/marktogether/lb.env
+ExecStart=/usr/bin/mono /opt/marktogether/lb/MarkTogether.Gateway.exe --service
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=marktogether-lb
+
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/marktogether/logs
+
+[Install]
+WantedBy=multi-user.target

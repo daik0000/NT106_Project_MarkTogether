@@ -151,7 +151,7 @@ namespace MarkTogether.Server.Network
             finally
             {
                 SessionManager.LeaveAllRooms(this);
-                if (!string.IsNullOrEmpty(_token))
+                if (!string.IsNullOrEmpty(_token) && SessionManager.RemoveSessionOnDisconnect)
                     SessionManager.RemoveSession(_token);
 
                 _stream?.Close();

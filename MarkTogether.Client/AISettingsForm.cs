@@ -50,7 +50,7 @@ namespace MarkTogether.Client
         private async void btnTest_Click(object sender, EventArgs e)
         {
             string apiKey = (txtApiKey.Text ?? "").Trim();
-            string model = cmbModel.SelectedItem?.ToString() ?? "gemini-1.5-flash-latest";
+            string model = cmbModel.SelectedItem?.ToString() ?? "gemini-2.5-flash";
 
             if (string.IsNullOrWhiteSpace(apiKey))
             {
@@ -86,7 +86,7 @@ namespace MarkTogether.Client
             AISettingsStore.Save(new AISettings
             {
                 Provider = "gemini",
-                Model = cmbModel.SelectedItem?.ToString() ?? "gemini-1.5-flash-latest",
+                Model = cmbModel.SelectedItem?.ToString() ?? "gemini-2.5-flash",
                 ApiKey = (txtApiKey.Text ?? "").Trim()
             });
 

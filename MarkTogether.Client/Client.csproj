@@ -11,6 +11,7 @@
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateResourceMSBuildArchitecture>CurrentArchitecture</GenerateResourceMSBuildArchitecture>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -121,6 +122,7 @@
       <DependentUpon>CreateDocumentForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Network\Logger.cs" />
+    <Compile Include="Network\ServerEndpointConfig.cs" />
     <Compile Include="Network\SocketClient.cs" />
     <Compile Include="UI\AppTheme.cs" />
     <Compile Include="UI\UiFactory.cs" />
@@ -181,11 +183,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="server.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MarkTogether.Shared\Shared.csproj">
       <Project>{2d1c0b86-2d99-4c01-9eca-def9ed32e4bd}</Project>
       <Name>Shared</Name>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
   </ItemGroup>
   <Import Project="..\packages\Microsoft.Web.WebView2.1.0.3405.78\build\Microsoft.Web.WebView2.targets" Condition="Exists('..\packages\Microsoft.Web.WebView2.1.0.3405.78\build\Microsoft.Web.WebView2.targets')" />

@@ -108,7 +108,11 @@
     <Compile Include="OT\DocumentStateManager.cs" />
     <Compile Include="OT\OTEngine.cs" />
     <Compile Include="Network\ClientHandler.cs" />
+    <Compile Include="Network\InMemorySessionStore.cs" />
+    <Compile Include="Network\ISessionStore.cs" />
+    <Compile Include="Network\RedisSessionStore.cs" />
     <Compile Include="Network\SessionManager.cs" />
+    <Compile Include="Network\SessionStoreFactory.cs" />
     <Compile Include="Network\SocketServer.cs" />
     <Compile Include="Services\AIEditPlanValidator.cs" />
     <Compile Include="Services\AISuggestionService.cs" />
@@ -132,6 +136,7 @@
     <ProjectReference Include="..\MarkTogether.Shared\Shared.csproj">
       <Project>{2d1c0b86-2d99-4c01-9eca-def9ed32e4bd}</Project>
       <Name>Shared</Name>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
   </ItemGroup>
   <Target Name="ForceCopyAppConfig" AfterTargets="Build">
@@ -140,9 +145,12 @@
           OverwriteReadOnlyFiles="true" />
   </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Target Name="CopyValueTuple" AfterTargets="Build">
+  <PropertyGroup>
+    <VsTestValueTuplePath>C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\VsTest\TestHostNetFramework\System.ValueTuple.dll</VsTestValueTuplePath>
+  </PropertyGroup>
+  <Target Name="CopyValueTuple" AfterTargets="Build" Condition="Exists('$(VsTestValueTuplePath)')">
     <Copy
-      SourceFiles="C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\VsTest\TestHostNetFramework\System.ValueTuple.dll"
+      SourceFiles="$(VsTestValueTuplePath)"
       DestinationFolder="$(OutputPath)"
       SkipUnchangedFiles="true" />
   </Target>

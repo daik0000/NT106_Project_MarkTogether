@@ -8,52 +8,40 @@ namespace MarkTogether.Server.Network
 {
     /// <summary>
     /// Quản lý:
-    ///  - Session: token ↔ userId
-    ///  - DocRoom: docId ↔ Set<ClientHandler> đang mở doc
+    ///  - Session: token ↔ userId (Redis hoặc in-memory fallback)
+    ///  - DocRoom: docId ↔ tập ClientHandler đang mở doc
     /// Thread-safe.
     /// </summary>
     public static class SessionManager
     {
-        // ─── Session token ↔ userId ─────────────────────────
-        private static readonly ConcurrentDictionary<string, int> _sessions
-            = new ConcurrentDictionary<string, int>();
+        private static readonly ISessionStore _sessionStore = SessionStoreFactory.Create();
 
-        // ─── docId ↔ Set<ClientHandler> ─────────────────────
         private static readonly ConcurrentDictionary<string, HashSet<ClientHandler>> _docRooms
             = new ConcurrentDictionary<string, HashSet<ClientHandler>>();
 
-        // Lock cho HashSet bên trong (ConcurrentDictionary chỉ thread-safe ở mức key/value)
         private static readonly object _roomsLock = new object();
+        public static bool RemoveSessionOnDisconnect => _sessionStore.RemoveOnDisconnect;
 
-        // ═══════════════════════════════════════════════════════
-        //  SESSION
-        // ═══════════════════════════════════════════════════════
         public static void AddSession(string token, int userId)
         {
-            if (!string.IsNullOrEmpty(token))
-                _sessions[token] = userId;
+            _sessionStore.AddOrUpdate(token, userId);
         }
 
         public static int GetUserId(string token)
         {
-            if (string.IsNullOrEmpty(token)) return -1;
-            return _sessions.TryGetValue(token, out int userId) ? userId : -1;
+            return _sessionStore.GetUserId(token);
         }
 
         public static void RemoveSession(string token)
         {
-            if (!string.IsNullOrEmpty(token))
-                _sessions.TryRemove(token, out _);
+            _sessionStore.Remove(token);
         }
 
         public static bool IsValid(string token)
         {
-            return !string.IsNullOrEmpty(token) && _sessions.ContainsKey(token);
+            return _sessionStore.Exists(token);
         }
 
-        // ═══════════════════════════════════════════════════════
-        //  DOC ROOM
-        // ═══════════════════════════════════════════════════════
         public static void JoinRoom(string docId, ClientHandler handler)
         {
             if (string.IsNullOrEmpty(docId) || handler == null) return;
@@ -86,9 +74,6 @@ namespace MarkTogether.Server.Network
             }
         }
 
-        /// <summary>
-        /// Khi client disconnect — xoá khỏi mọi room.
-        /// </summary>
         public static void LeaveAllRooms(ClientHandler handler)
         {
             if (handler == null) return;
@@ -103,6 +88,7 @@ namespace MarkTogether.Server.Network
                         emptyRooms.Add(kv.Key);
                     }
                 }
+
                 foreach (var key in emptyRooms)
                 {
                     _docRooms.TryRemove(key, out _);
@@ -124,9 +110,6 @@ namespace MarkTogether.Server.Network
             }
         }
 
-        /// <summary>
-        /// Broadcast packet tới mọi client trong room. Có thể loại trừ 1 client.
-        /// </summary>
         public static void BroadcastToRoom(string docId, Packet packet, ClientHandler exclude = null)
         {
             if (string.IsNullOrEmpty(docId) || packet == null) return;

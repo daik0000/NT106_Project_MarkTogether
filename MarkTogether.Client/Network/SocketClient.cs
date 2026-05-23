@@ -25,6 +25,7 @@ namespace MarkTogether.Client.Network
         private bool _connected;
         private Thread _receiveThread;
         private volatile bool _stopReceive;
+        private ServerEndpointConfig _endpointConfig;
 
         private readonly ConcurrentDictionary<string, TaskCompletionSource<Packet>> _pending
             = new ConcurrentDictionary<string, TaskCompletionSource<Packet>>();
@@ -78,6 +79,12 @@ namespace MarkTogether.Client.Network
             _receiveThread.Start();
         }
 
+        public void ConnectFromConfig()
+        {
+            _endpointConfig = ServerEndpointConfig.Load();
+            Connect(_endpointConfig.Host, _endpointConfig.Port);
+        }
+
         private bool ValidateServerCertificate(object sender, X509Certificate certificate, X509Chain chain, System.Net.Security.SslPolicyErrors sslPolicyErrors)
         {
             string expectedThumb = LoadExpectedCertThumb();
@@ -95,16 +102,8 @@ namespace MarkTogether.Client.Network
         {
             try
             {
-                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server.config");
-                if (!File.Exists(path))
-                    return string.Empty;
-
-                foreach (var rawLine in File.ReadAllLines(path))
-                {
-                    string line = (rawLine ?? string.Empty).Trim();
-                    if (line.StartsWith("CERT_THUMB=", StringComparison.OrdinalIgnoreCase))
-                        return line.Substring("CERT_THUMB=".Length).Trim();
-                }
+                var cfg = _endpointConfig ?? ServerEndpointConfig.Load();
+                return cfg.CertThumb ?? string.Empty;
             }
             catch
             {
