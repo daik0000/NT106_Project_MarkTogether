@@ -29,6 +29,7 @@ namespace MarkTogether.Client
         private readonly string _initialContent;
         private readonly Timer _opFlushTimer;
         private readonly Timer _autosaveTimer;
+        private readonly Timer _draftTimer;
         private string _lastMarkdownText = string.Empty;
         private PendingOpType? _pendingOpType;
         private int _pendingOpStartPos;
@@ -40,6 +41,8 @@ namespace MarkTogether.Client
         private bool _suppressOpTracking;
         private bool _hasUnsavedChanges;
         private bool _isAutosaving;
+        private bool _periodicEnabled;
+        private int _periodicIntervalMs;
         private string _lastSavedContent = string.Empty;
         private readonly List<CommentDto> _comments = new List<CommentDto>();
         private readonly Stack<string> _aiUndoStack = new Stack<string>();
@@ -52,7 +55,8 @@ namespace MarkTogether.Client
         private Task _pasteSendTask;
 
         private const int MaxCharsPerPacket = 5;
-        private const int AutosaveIntervalMs = 30000;
+        private const int DefaultPeriodicAutosaveIntervalMs = 60000;
+        private const int DraftSaveDebounceMs = 2000;
         private const int PasteThresholdChars = 20;
 
         private enum PendingOpType { Insert, Delete }
@@ -141,8 +145,12 @@ namespace MarkTogether.Client
             _opFlushTimer = new Timer { Interval = 250 };
             _opFlushTimer.Tick += OpFlushTimer_Tick;
 
-            _autosaveTimer = new Timer { Interval = AutosaveIntervalMs };
+            _autosaveTimer = new Timer { Interval = DefaultPeriodicAutosaveIntervalMs };
             _autosaveTimer.Tick += AutosaveTimer_Tick;
+
+            _draftTimer = new Timer { Interval = DraftSaveDebounceMs };
+            _draftTimer.Tick += DraftTimer_Tick;
+            _periodicIntervalMs = DefaultPeriodicAutosaveIntervalMs;
 
             webPreview.TabStop = false;
             txtRawMarkdown.ContextMenu = new ContextMenu();
@@ -161,8 +169,7 @@ namespace MarkTogether.Client
             _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
             _lastSavedContent = _lastMarkdownText;
             _trackRealtimeOps = !string.IsNullOrWhiteSpace(_docId);
-            if (_trackRealtimeOps)
-                _autosaveTimer.Start();
+            ApplyPeriodicTimer();
 
             // Subscribe push events
             if (!string.IsNullOrWhiteSpace(_docId))
@@ -354,6 +361,10 @@ namespace MarkTogether.Client
             btnAddComment.Location = new System.Drawing.Point(x, top);
             x -= gap + btnInsertImage.Width;
             btnInsertImage.Location = new System.Drawing.Point(x, top);
+            x -= gap + cmbAutosaveInterval.Width;
+            cmbAutosaveInterval.Location = new System.Drawing.Point(x, top);
+            x -= gap + chkPeriodicAutosave.Width;
+            chkPeriodicAutosave.Location = new System.Drawing.Point(x, top + 8);
 
             // Permission badge gần title
             lblPermissionBadge.Location = new System.Drawing.Point(
@@ -481,6 +492,13 @@ namespace MarkTogether.Client
                     _hasUnsavedChanges = (txtRawMarkdown.Text ?? string.Empty) != _lastSavedContent;
                 }
 
+                if (!_suppressOpTracking && _hasUnsavedChanges && !string.IsNullOrWhiteSpace(_docId)
+                    && (_permission == "owner" || _permission == "editor"))
+                {
+                    _draftTimer.Stop();
+                    _draftTimer.Start();
+                }
+
                 _renderRequestVersion++;
                 _renderDebounceTimer.Stop();
                 _renderDebounceTimer.Start();
@@ -494,7 +512,7 @@ namespace MarkTogether.Client
 
         private async void AutosaveTimer_Tick(object sender, EventArgs e)
         {
-            if (_isAutosaving || !_hasUnsavedChanges || string.IsNullOrWhiteSpace(_docId))
+            if (_isAutosaving || !_periodicEnabled || !_hasUnsavedChanges || string.IsNullOrWhiteSpace(_docId))
                 return;
 
             bool canEdit = _permission == "owner" || _permission == "editor";
@@ -511,10 +529,11 @@ namespace MarkTogether.Client
             _isAutosaving = true;
             try
             {
-                await Task.Run(() => SocketClient.Instance.SaveDocument(_docId, content));
+                await Task.Run(() => SocketClient.Instance.SaveDocument(
+                    _docId, content, "periodic", _periodicIntervalMs / 60000));
                 _lastSavedContent = content;
                 _hasUnsavedChanges = false;
-                Text = $"MarkTogether - {_docTitle} (tự lưu lúc {DateTime.Now:HH:mm:ss})";
+                Text = $"MarkTogether - {_docTitle} (tự lưu định kỳ lúc {DateTime.Now:HH:mm:ss})";
             }
             catch (Exception ex)
             {
@@ -523,6 +542,29 @@ namespace MarkTogether.Client
             finally
             {
                 _isAutosaving = false;
+            }
+        }
+
+        private async void DraftTimer_Tick(object sender, EventArgs e)
+        {
+            _draftTimer.Stop();
+
+            if (!_hasUnsavedChanges || string.IsNullOrWhiteSpace(_docId))
+                return;
+
+            bool canEdit = _permission == "owner" || _permission == "editor";
+            if (!canEdit || !SocketClient.Instance.IsLoggedIn)
+                return;
+
+            try
+            {
+                string content = txtRawMarkdown.Text ?? string.Empty;
+                await Task.Run(() => SocketClient.Instance.SaveDocument(_docId, content, "draft"));
+                // Draft không phải save chính thức: không reset _hasUnsavedChanges / _lastSavedContent.
+            }
+            catch
+            {
+                // Draft autosave chạy nền, không hiển thị lỗi để tránh làm gián đoạn người dùng.
             }
         }
 
@@ -882,12 +924,53 @@ namespace MarkTogether.Client
             {
                 FlushPendingEditOperation();
                 string content = txtRawMarkdown.Text ?? string.Empty;
-                await Task.Run(() => SocketClient.Instance.SaveDocument(_docId, content));
+                await Task.Run(() => SocketClient.Instance.SaveDocument(_docId, content, "manual"));
+                _lastSavedContent = content;
+                _hasUnsavedChanges = false;
                 Text = $"MarkTogether - {_docTitle} (đã lưu lúc {DateTime.Now:HH:mm:ss})";
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Lưu thất bại: {ex.Message}", "Lỗi");
+            }
+        }
+
+        private void chkPeriodicAutosave_CheckedChanged(object sender, EventArgs e)
+        {
+            _periodicEnabled = chkPeriodicAutosave.Checked;
+            cmbAutosaveInterval.Enabled = _periodicEnabled;
+            ApplyPeriodicTimer();
+        }
+
+        private void cmbAutosaveInterval_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            switch (cmbAutosaveInterval.SelectedIndex)
+            {
+                case 0:
+                    _periodicIntervalMs = 60000;
+                    break;
+                case 1:
+                    _periodicIntervalMs = 300000;
+                    break;
+                case 2:
+                    _periodicIntervalMs = 1800000;
+                    break;
+                default:
+                    _periodicIntervalMs = DefaultPeriodicAutosaveIntervalMs;
+                    break;
+            }
+
+            ApplyPeriodicTimer();
+        }
+
+        private void ApplyPeriodicTimer()
+        {
+            _autosaveTimer.Stop();
+
+            if (_periodicEnabled && _periodicIntervalMs > 0 && _trackRealtimeOps)
+            {
+                _autosaveTimer.Interval = _periodicIntervalMs;
+                _autosaveTimer.Start();
             }
         }
 
@@ -1524,6 +1607,10 @@ namespace MarkTogether.Client
             _opFlushTimer.Dispose();
             _renderDebounceTimer.Tick -= RenderDebounceTimer_Tick;
             _renderDebounceTimer.Dispose();
+            _autosaveTimer.Tick -= AutosaveTimer_Tick;
+            _autosaveTimer.Dispose();
+            _draftTimer.Tick -= DraftTimer_Tick;
+            _draftTimer.Dispose();
 
             if (webPreview.CoreWebView2 != null)
                 webPreview.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;
@@ -1562,7 +1649,7 @@ namespace MarkTogether.Client
             {
                 try
                 {
-                    SocketClient.Instance.SaveDocument(_docId, txtRawMarkdown.Text ?? string.Empty);
+                    SocketClient.Instance.SaveDocument(_docId, txtRawMarkdown.Text ?? string.Empty, "manual");
                 }
                 catch (Exception ex)
                 {

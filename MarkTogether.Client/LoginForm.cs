@@ -120,6 +120,23 @@ namespace MarkTogether.Client
             }
         }
 
+        private void lnkForgotPassword_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            try
+            {
+                SocketClient.Instance.Connect("159.203.184.87", 5000);
+            }
+            catch
+            {
+                // Dialog sẽ hiển thị lỗi cụ thể nếu request không kết nối được.
+            }
+
+            using (var dlg = new ForgotPasswordForm())
+            {
+                dlg.ShowDialog(this);
+            }
+        }
+
         private void txtPassword_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)

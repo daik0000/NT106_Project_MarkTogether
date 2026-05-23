@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Net.Sockets;
 using System.Text;
 using Newtonsoft.Json;
 
@@ -9,16 +8,16 @@ namespace MarkTogether.Shared
     public static class PacketHelper
     {
         // Lock per-stream để tránh 2 thread cùng Write làm interleave bytes.
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<NetworkStream, object> _streamLocks
-            = new System.Runtime.CompilerServices.ConditionalWeakTable<NetworkStream, object>();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Stream, object> _streamLocks
+            = new System.Runtime.CompilerServices.ConditionalWeakTable<Stream, object>();
 
-        private static object GetStreamLock(NetworkStream stream)
+        private static object GetStreamLock(Stream stream)
         {
             return _streamLocks.GetValue(stream, _ => new object());
         }
 
         // Gửi: serialize packet → prefix 4-byte length → write stream (thread-safe per stream).
-        public static void Send(NetworkStream stream, Packet packet)
+        public static void Send(Stream stream, Packet packet)
         {
             string json = JsonConvert.SerializeObject(packet);
             byte[] data = Encoding.UTF8.GetBytes(json);
@@ -35,7 +34,7 @@ namespace MarkTogether.Shared
         // Nhận: đọc 4-byte length → đọc đúng số bytes → deserialize.
         // KHÔNG lock vì giả định chỉ có 1 thread đọc 1 stream cùng lúc
         // (server: ProcessAsync; client: ReceiveLoop).
-        public static Packet Receive(NetworkStream stream)
+        public static Packet Receive(Stream stream)
         {
             byte[] lenBytes = new byte[4];
             ReadExact(stream, lenBytes, 4);
@@ -51,7 +50,7 @@ namespace MarkTogether.Shared
             return JsonConvert.DeserializeObject<Packet>(json);
         }
 
-        private static void ReadExact(NetworkStream stream, byte[] buf, int n)
+        private static void ReadExact(Stream stream, byte[] buf, int n)
         {
             int offset = 0;
             while (offset < n)

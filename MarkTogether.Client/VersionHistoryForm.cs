@@ -29,6 +29,13 @@ namespace MarkTogether.Client
             UiFactory.StyleFooterPanel(pnlButtons);
             UiFactory.StyleSplitContainer(split);
 
+            pnlButtons.Resize += (s, e) => LayoutFooterButtons();
+            listVersions.Resize += (s, e) => LayoutVersionColumns();
+            split.Resize += (s, e) => LayoutVersionColumns();
+
+            LayoutFooterButtons();
+            LayoutVersionColumns();
+
             Shown += async (s, e) => await ReloadAsync();
         }
 
@@ -42,14 +49,22 @@ namespace MarkTogether.Client
 
                 foreach (var v in resp.versions)
                 {
+                    string rawLabel = v.label ?? "";
+                    string badge = "📝 Thủ công";
+                    if (rawLabel.StartsWith("periodic:", StringComparison.OrdinalIgnoreCase))
+                        badge = "⏱ Định kỳ";
+                    else if (rawLabel.StartsWith("draft:", StringComparison.OrdinalIgnoreCase))
+                        badge = "💾 Nháp";
+
                     var item = new ListViewItem(v.savedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss"));
                     item.SubItems.Add(v.savedByUsername ?? "-");
-                    item.SubItems.Add(v.label ?? "");
+                    item.SubItems.Add($"{badge} — {rawLabel}");
                     item.Tag = v.id;
                     listVersions.Items.Add(item);
                 }
 
                 lblCount.Text = $"Tổng: {resp.total} version (hiển thị {resp.versions.Count})";
+                LayoutVersionColumns();
             }
             catch (Exception ex)
             {
@@ -149,6 +164,44 @@ namespace MarkTogether.Client
         private void btnClose_Click(object sender, EventArgs e)
         {
             Close();
+        }
+
+        private void LayoutFooterButtons()
+        {
+            if (pnlButtons.ClientSize.Width <= 0) return;
+
+            int gap = AppTheme.SpaceMd;
+            int y = (pnlButtons.ClientSize.Height - AppTheme.ButtonHeightSmall) / 2;
+            int right = pnlButtons.ClientSize.Width;
+
+            btnClose.Location = new System.Drawing.Point(right - btnClose.Width, y);
+            right = btnClose.Left - gap;
+            btnDelete.Location = new System.Drawing.Point(right - btnDelete.Width, y);
+            right = btnDelete.Left - gap;
+            btnRestore.Location = new System.Drawing.Point(right - btnRestore.Width, y);
+            right = btnRestore.Left - gap;
+            btnRefresh.Location = new System.Drawing.Point(right - btnRefresh.Width, y);
+
+            lblCount.Location = new System.Drawing.Point(
+                0,
+                (pnlButtons.ClientSize.Height - lblCount.Height) / 2);
+            lblCount.MaximumSize = new System.Drawing.Size(
+                Math.Max(120, btnRefresh.Left - gap),
+                0);
+        }
+
+        private void LayoutVersionColumns()
+        {
+            if (listVersions.ClientSize.Width <= 0 || listVersions.Columns.Count < 3) return;
+
+            int width = Math.Max(320, listVersions.ClientSize.Width - 8);
+            int timeWidth = 170;
+            int userWidth = 130;
+            int labelWidth = Math.Max(120, width - timeWidth - userWidth);
+
+            colTime.Width = timeWidth;
+            colUser.Width = userWidth;
+            colLabel.Width = labelWidth;
         }
     }
 }

@@ -3,8 +3,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using MarkTogether.Server.Database.Models;
 using MarkTogether.Server.Database.Repositories;
@@ -20,7 +23,8 @@ namespace MarkTogether.Server.Network
     public class ClientHandler
     {
         private readonly TcpClient _tcpClient;
-        private readonly NetworkStream _stream;
+        private readonly Stream _stream;
+        private readonly X509Certificate2 _serverCert;
         private string _token;
         private int _userId = -1;
         private string _username;
@@ -32,10 +36,19 @@ namespace MarkTogether.Server.Network
         public string Username => _username;
         public string Token => _token;
 
-        public ClientHandler(TcpClient tcpClient)
+        public ClientHandler(TcpClient tcpClient, X509Certificate2 serverCert)
         {
             _tcpClient = tcpClient;
-            _stream = tcpClient.GetStream();
+            _serverCert = serverCert;
+
+            var ssl = new SslStream(tcpClient.GetStream(), false);
+            ssl.AuthenticateAsServer(
+                _serverCert,
+                false,
+                SslProtocols.Tls12,
+                false);
+
+            _stream = ssl;
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -72,6 +85,8 @@ namespace MarkTogether.Server.Network
                         case MessageType.AUTH_REGISTER: HandleRegister(packet); break;
                         case MessageType.AUTH_LOGIN: HandleLogin(packet); break;
                         case MessageType.AUTH_LOGOUT: HandleLogout(packet); break;
+                        case MessageType.AUTH_FORGOT_PASSWORD: HandleForgotPassword(packet); break;
+                        case MessageType.AUTH_RESET_PASSWORD: HandleResetPassword(packet); break;
 
                         case MessageType.DOC_LIST: HandleDocList(packet); break;
                         case MessageType.DOC_CREATE: HandleDocCreate(packet); break;
@@ -238,6 +253,24 @@ namespace MarkTogether.Server.Network
             });
         }
 
+        private void HandleForgotPassword(Packet packet)
+        {
+            var payload = packet.GetPayload<Payload_AUTH_FORGOT_PASSWORD_Request>();
+            Packet origin = packet;
+            Task.Run(async () =>
+            {
+                var response = await AuthService.RequestPasswordResetAsync(payload?.Email);
+                Reply(origin, MessageType.AUTH_FORGOT_PASSWORD, response);
+            });
+        }
+
+        private void HandleResetPassword(Packet packet)
+        {
+            var payload = packet.GetPayload<Payload_AUTH_RESET_PASSWORD_Request>();
+            var response = AuthService.ResetPassword(payload?.Email, payload?.Otp, payload?.NewPassword);
+            Reply(packet, MessageType.AUTH_RESET_PASSWORD, response);
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  DOCUMENT
         // ═══════════════════════════════════════════════════════════
@@ -369,23 +402,42 @@ namespace MarkTogether.Server.Network
             }
 
             string newContent = payload.content ?? string.Empty;
+            string kind = (payload.kind ?? "manual").Trim().ToLowerInvariant();
+            if (kind != "draft" && kind != "periodic" && kind != "manual")
+                kind = "manual";
+
             if (!DocumentRepository.UpdateContent(docId, newContent))
             {
                 ReplyError(packet, "Lưu tài liệu thất bại.");
                 return;
             }
 
-            // CN9: tự lưu version mỗi lần save
+            // CN9: phân loại version manual / periodic / draft bằng prefix label, không đổi schema.
             try
             {
-                DocumentVersionRepository.SaveVersion(new DocumentVersion
+                if (kind == "draft")
                 {
-                    DocId = docId,
-                    ContentSnapshot = newContent,
-                    SavedBy = currentUserId,
-                    Label = $"Saved by {_username}"
-                });
-                TrimVersions(docId, 50);
+                    DocumentVersionRepository.UpsertDraftVersion(
+                        docId,
+                        newContent,
+                        currentUserId,
+                        $"draft:by {_username}");
+                }
+                else
+                {
+                    string label = kind == "periodic"
+                        ? $"periodic:{payload.periodicIntervalMin}m by {_username}"
+                        : $"manual:Saved by {_username}";
+
+                    DocumentVersionRepository.SaveVersion(new DocumentVersion
+                    {
+                        DocId = docId,
+                        ContentSnapshot = newContent,
+                        SavedBy = currentUserId,
+                        Label = label
+                    });
+                    TrimVersions(docId, 50);
+                }
             }
             catch (Exception ex)
             {

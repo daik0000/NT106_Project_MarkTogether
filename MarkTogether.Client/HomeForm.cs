@@ -67,9 +67,13 @@ namespace MarkTogether.Client
             pnlHeader.Resize += (s, _) => LayoutHeaderButtons();
             pnlActionBar.Resize += (s, _) => LayoutActionBarButtons();
             pnlFilter.Resize += (s, _) => LayoutFilterBar();
+            pnlJoin.Resize += (s, _) => LayoutJoinPanel();
+            pnlListContainer.Resize += (s, _) => LayoutDocumentColumns();
+            listDocuments.Resize += (s, _) => LayoutDocumentColumns();
             LayoutHeaderButtons();
             LayoutActionBarButtons();
             LayoutFilterBar();
+            LayoutDocumentColumns();
 
             BuildDocumentContextMenu();
         }
@@ -209,6 +213,7 @@ namespace MarkTogether.Client
             listDocuments.EndUpdate();
             lblCount.Text = $"{listDocuments.Items.Count} tài liệu";
             LayoutFilterBar();
+            LayoutDocumentColumns();
         }
 
         private static string FormatPermission(string p)
@@ -451,13 +456,44 @@ namespace MarkTogether.Client
         private void LayoutActionBarButtons()
         {
             if (pnlActionBar.ClientSize.Width <= 0) return;
+
+            int gap = AppTheme.SpaceMd;
             int right = pnlActionBar.ClientSize.Width;
             int btnY = 16;
-            int gap = AppTheme.SpaceSm;
 
             btnNew.Location = new System.Drawing.Point(right - btnNew.Width, btnY);
-            right -= btnNew.Width + gap;
-            btnImport.Location = new System.Drawing.Point(right - btnImport.Width, btnY);
+            btnImport.Location = new System.Drawing.Point(btnNew.Left - gap - btnImport.Width, btnY);
+
+            int reservedForActions = Math.Max(0, pnlActionBar.ClientSize.Width - btnImport.Left + gap);
+            int textMaxWidth = Math.Max(320, pnlActionBar.ClientSize.Width - reservedForActions - gap);
+            lblPageTitle.MaximumSize = new System.Drawing.Size(textMaxWidth, 0);
+            lblPageSubtitle.MaximumSize = new System.Drawing.Size(textMaxWidth, 0);
+
+            int joinTop = 88;
+            int joinMaxWidth = btnImport.Left - gap;
+            int joinWidth = joinMaxWidth >= 520 ? joinMaxWidth : pnlActionBar.ClientSize.Width;
+
+            pnlJoin.Location = new System.Drawing.Point(0, joinTop);
+            pnlJoin.Size = new System.Drawing.Size(Math.Max(360, joinWidth), AppTheme.InputHeight + 24);
+            LayoutJoinPanel();
+        }
+
+        private void LayoutJoinPanel()
+        {
+            if (pnlJoin.ClientSize.Width <= 0) return;
+
+            int paddingX = AppTheme.SpaceLg;
+            int paddingY = AppTheme.SpaceMd;
+            int gap = AppTheme.SpaceMd;
+
+            btnJoinCode.Location = new System.Drawing.Point(
+                pnlJoin.ClientSize.Width - paddingX - btnJoinCode.Width,
+                paddingY);
+
+            int inputRight = btnJoinCode.Left - gap;
+            int inputWidth = Math.Max(80, inputRight - paddingX);
+            txtJoinCode.Location = new System.Drawing.Point(paddingX, paddingY);
+            txtJoinCode.Size = new System.Drawing.Size(inputWidth, AppTheme.InputHeight);
         }
 
         private void LayoutFilterBar()
@@ -467,6 +503,20 @@ namespace MarkTogether.Client
             lblCount.Location = new System.Drawing.Point(
                 right - lblCount.PreferredWidth,
                 (pnlFilter.Height - lblCount.Height) / 2);
+        }
+
+        private void LayoutDocumentColumns()
+        {
+            if (listDocuments.ClientSize.Width <= 0 || listDocuments.Columns.Count < 3) return;
+
+            int width = Math.Max(640, listDocuments.ClientSize.Width - 8);
+            int permissionWidth = 180;
+            int updatedWidth = 260;
+            int titleWidth = Math.Max(260, width - updatedWidth - permissionWidth);
+
+            colTitle.Width = titleWidth;
+            colUpdatedAt.Width = updatedWidth;
+            colPermission.Width = permissionWidth;
         }
     }
 }

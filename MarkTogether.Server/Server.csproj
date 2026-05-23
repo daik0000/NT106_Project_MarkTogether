@@ -114,6 +114,7 @@
     <Compile Include="Services\AISuggestionService.cs" />
     <Compile Include="Services\AuthService.cs" />
     <Compile Include="Services\DocumentPermissionService.cs" />
+    <Compile Include="Services\EmailService.cs" />
     <Compile Include="Services\ImageStorageService.cs" />
     <Compile Include="Services\ImageValidator.cs" />
     <Compile Include="Services\SecureTokenGenerator.cs" />

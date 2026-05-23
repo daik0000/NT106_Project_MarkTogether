@@ -84,6 +84,12 @@
     <Compile Include="AIEditPreviewForm.Designer.cs">
       <DependentUpon>AIEditPreviewForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="ForgotPasswordForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ForgotPasswordForm.Designer.cs">
+      <DependentUpon>ForgotPasswordForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Services\AIEditPlanApplier.cs" />
     <Compile Include="Services\AIEditPlanModels.cs" />
     <Compile Include="Services\AISettingsStore.cs" />

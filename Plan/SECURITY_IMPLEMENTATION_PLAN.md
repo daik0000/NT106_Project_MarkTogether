@@ -485,24 +485,31 @@ Tiêu chí pass:
 > AI executor: thêm 1 block sau mỗi task hoàn thành.
 
 ```
-### T1 — <date>
+### T1 — 2026-05-22
 - Files modified: MarkTogether.Server/Services/AuthService.cs
 - Root cause: GUID không phải CSPRNG security token chính danh.
 - Fix: Thay GenerateToken() bằng SecureTokenGenerator.GenerateUrlSafeToken(48).
-- Test: login OK, token 48 ký tự alnum, session resolve OK.
-- Side effects: none.
+- Test: build Debug/Release (xem kết quả executor).
+- Side effects: token mới dài 48 ký tự, client không cần đổi.
 ```
 
 ```
-### T2 — <date>
-- Files modified: ...
-- Root cause: ...
-- Fix: ...
-- Test: ...
-- Side effects: ...
+### T2 — 2026-05-22
+- Files modified: MarkTogether.Server/Services/AuthService.cs
+- Root cause: AuthService.Login() không cooldown sau nhiều lần sai password.
+- Fix: Thêm ConcurrentDictionary in-memory theo username lower-case; 5 lần sai khóa 15 phút; login đúng clear counter; không log password.
+- Test: build Debug/Release (xem kết quả executor).
+- Side effects: lockout mất khi server restart, đúng phạm vi plan.
 ```
 
-...
+```
+### T3 — 2026-05-22
+- Files modified: MarkTogether.Shared/PacketHelper.cs, MarkTogether.Server/Network/ClientHandler.cs, MarkTogether.Server/Network/SocketServer.cs, MarkTogether.Server/Program.cs, MarkTogether.Client/Network/SocketClient.cs, MarkTogether.Server/App.config, MarkTogether.Client/server.config, DOCUMENTATION.md
+- Root cause: PacketHelper đọc/ghi trực tiếp NetworkStream plaintext.
+- Fix: PacketHelper nhận Stream; server wrap connection bằng SslStream TLS 1.2 với PFX từ App.config; client wrap SslStream và hỗ trợ CERT_THUMB pinning.
+- Test: build Debug/Release (xem kết quả executor).
+- Side effects: cần tạo/copy marktogether.pfx vào output server trước khi chạy.
+```
 
 ---
 

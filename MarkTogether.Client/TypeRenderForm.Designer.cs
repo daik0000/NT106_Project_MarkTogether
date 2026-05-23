@@ -19,6 +19,8 @@ namespace MarkTogether.Client
             this.btnBack = new System.Windows.Forms.Button();
             this.lblDocTitle = new System.Windows.Forms.Label();
             this.lblPermissionBadge = new System.Windows.Forms.Label();
+            this.chkPeriodicAutosave = new System.Windows.Forms.CheckBox();
+            this.cmbAutosaveInterval = new System.Windows.Forms.ComboBox();
             this.btnSave = new System.Windows.Forms.Button();
             this.btnShare = new System.Windows.Forms.Button();
             this.btnVersions = new System.Windows.Forms.Button();
@@ -92,6 +94,8 @@ namespace MarkTogether.Client
             this.pnlHeader.Controls.Add(this.btnBack);
             this.pnlHeader.Controls.Add(this.lblDocTitle);
             this.pnlHeader.Controls.Add(this.lblPermissionBadge);
+            this.pnlHeader.Controls.Add(this.chkPeriodicAutosave);
+            this.pnlHeader.Controls.Add(this.cmbAutosaveInterval);
             this.pnlHeader.Controls.Add(this.btnInsertImage);
             this.pnlHeader.Controls.Add(this.btnAddComment);
             this.pnlHeader.Controls.Add(this.btnExportPdf);
@@ -122,6 +126,24 @@ namespace MarkTogether.Client
             this.lblPermissionBadge.Location = new System.Drawing.Point(300, 22);
             this.lblPermissionBadge.Name = "lblPermissionBadge";
             this.lblPermissionBadge.Text = "Chủ sở hữu";
+            //
+            this.chkPeriodicAutosave.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
+            this.chkPeriodicAutosave.AutoSize = true;
+            this.chkPeriodicAutosave.Font = AppTheme.Caption;
+            this.chkPeriodicAutosave.ForeColor = AppTheme.TextSecondary;
+            this.chkPeriodicAutosave.Name = "chkPeriodicAutosave";
+            this.chkPeriodicAutosave.Text = "Tự lưu";
+            this.chkPeriodicAutosave.CheckedChanged += new System.EventHandler(this.chkPeriodicAutosave_CheckedChanged);
+            //
+            this.cmbAutosaveInterval.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
+            this.cmbAutosaveInterval.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbAutosaveInterval.Font = AppTheme.Caption;
+            this.cmbAutosaveInterval.Name = "cmbAutosaveInterval";
+            this.cmbAutosaveInterval.Size = new System.Drawing.Size(80, AppTheme.ButtonHeight);
+            this.cmbAutosaveInterval.Items.AddRange(new object[] { "1 phút", "5 phút", "30 phút" });
+            this.cmbAutosaveInterval.SelectedIndex = 0;
+            this.cmbAutosaveInterval.Enabled = false;
+            this.cmbAutosaveInterval.SelectedIndexChanged += new System.EventHandler(this.cmbAutosaveInterval_SelectedIndexChanged);
             //
             // CTA buttons (right-aligned)
             //
@@ -438,6 +460,8 @@ namespace MarkTogether.Client
         private System.Windows.Forms.Button btnBack;
         private System.Windows.Forms.Label lblDocTitle;
         private System.Windows.Forms.Label lblPermissionBadge;
+        private System.Windows.Forms.CheckBox chkPeriodicAutosave;
+        private System.Windows.Forms.ComboBox cmbAutosaveInterval;
         private System.Windows.Forms.Button btnSave;
         private System.Windows.Forms.Button btnShare;
         private System.Windows.Forms.Button btnVersions;

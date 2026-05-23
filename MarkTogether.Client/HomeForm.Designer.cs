@@ -93,7 +93,7 @@ namespace MarkTogether.Client
             //
             this.pnlActionBar.Dock = System.Windows.Forms.DockStyle.Top;
             this.pnlActionBar.BackColor = AppTheme.Background;
-            this.pnlActionBar.Height = 168;
+            this.pnlActionBar.Height = 148;
             this.pnlActionBar.Controls.Add(this.lblPageTitle);
             this.pnlActionBar.Controls.Add(this.lblPageSubtitle);
             this.pnlActionBar.Controls.Add(this.pnlJoin);
@@ -128,14 +128,14 @@ namespace MarkTogether.Client
             // Join code panel
             //
             this.pnlJoin.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left;
-            this.pnlJoin.Location = new System.Drawing.Point(0, 100);
-            this.pnlJoin.Size = new System.Drawing.Size(640, AppTheme.InputHeight + 24);
+            this.pnlJoin.Location = new System.Drawing.Point(0, 88);
+            this.pnlJoin.Size = new System.Drawing.Size(620, AppTheme.InputHeight + 24);
             this.pnlJoin.Name = "pnlJoin";
             this.pnlJoin.BackColor = AppTheme.Surface;
             this.pnlJoin.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd);
             //
             this.txtJoinCode.Location = new System.Drawing.Point(AppTheme.SpaceLg, AppTheme.SpaceMd);
-            this.txtJoinCode.Size = new System.Drawing.Size(360, AppTheme.InputHeight);
+            this.txtJoinCode.Size = new System.Drawing.Size(330, AppTheme.InputHeight);
             this.txtJoinCode.Font = AppTheme.MonoLarge;
             this.txtJoinCode.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.txtJoinCode.BackColor = AppTheme.Surface;
@@ -145,7 +145,7 @@ namespace MarkTogether.Client
             this.pnlJoin.Controls.Add(this.txtJoinCode);
             //
             this.btnJoinCode.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnJoinCode.Location = new System.Drawing.Point(420, AppTheme.SpaceMd);
+            this.btnJoinCode.Location = new System.Drawing.Point(400, AppTheme.SpaceMd);
             this.btnJoinCode.Size = new System.Drawing.Size(180, AppTheme.ButtonHeight);
             this.btnJoinCode.Text = "Tham gia bằng mã";
             this.btnJoinCode.Name = "btnJoinCode";
@@ -207,9 +207,9 @@ namespace MarkTogether.Client
             this.listDocuments.UseCompatibleStateImageBehavior = false;
             this.listDocuments.ItemActivate += new System.EventHandler(this.listDocuments_ItemActivate);
             //
-            this.colTitle.Text = "Tiêu đề"; this.colTitle.Width = 480;
-            this.colUpdatedAt.Text = "Cập nhật"; this.colUpdatedAt.Width = 220;
-            this.colPermission.Text = "Quyền"; this.colPermission.Width = 160;
+            this.colTitle.Text = "Tiêu đề"; this.colTitle.Width = 620;
+            this.colUpdatedAt.Text = "Cập nhật"; this.colUpdatedAt.Width = 260;
+            this.colPermission.Text = "Quyền"; this.colPermission.Width = 180;
             //
             // HomeForm
             //

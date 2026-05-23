@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using MarkTogether.Server.Network;
 
@@ -49,7 +50,8 @@ namespace MarkTogether.Server
             Console.WriteLine();
 
             // 2. Khởi động TCP Socket Server
-            var server = new SocketServer(port);
+            var cert = LoadServerCertificate();
+            var server = new SocketServer(port, cert);
             Task.Run(() => server.StartAsync());
 
             if (isService)
@@ -73,6 +75,21 @@ namespace MarkTogether.Server
 
             Console.WriteLine("[Server] Đang tắt...");
             server.Stop();
+        }
+
+        private static X509Certificate2 LoadServerCertificate()
+        {
+            string certPath = System.Configuration.ConfigurationManager.AppSettings["TlsCertPath"];
+            string certPass = System.Configuration.ConfigurationManager.AppSettings["TlsCertPassword"];
+
+            if (string.IsNullOrWhiteSpace(certPath))
+                throw new InvalidOperationException("Thiếu cấu hình TlsCertPath trong App.config.");
+
+            string resolvedPath = Path.IsPathRooted(certPath)
+                ? certPath
+                : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, certPath));
+
+            return new X509Certificate2(resolvedPath, certPass);
         }
 
         private static int ResolvePort()

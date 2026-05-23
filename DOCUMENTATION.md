@@ -65,7 +65,7 @@
 
 ### 1.3. Các chức năng chính (đã implement)
 
-1. **Auth** — đăng ký, đăng nhập, đăng xuất (BCrypt hash, GUID token).
+1. **Auth** — đăng ký, đăng nhập, đăng xuất (BCrypt hash, CSPRNG session token, login rate-limit).
 2. **Document management** — tạo, mở, lưu (manual + autosave), xoá mềm, import `.md`, search.
 3. **Sharing** — share theo username, share-code, sharing link với expiry/maxUses, public/private/restricted visibility.
 4. **Realtime collaboration (OT)** — `OP_INSERT` / `OP_DELETE` được transform server-side và broadcast.
@@ -289,7 +289,8 @@ NT106_Project_MarkTogether/
 │   ├── CreateDocumentForm.cs             # Modal nhập tiêu đề
 │   ├── TypeRenderForm.cs                 # Editor + Preview + Chat + Comment + AI
 │   ├── AISettingsForm.cs / .Designer.cs  # Modal cấu hình Gemini model + API key
-│   ├── Services/AISettingsStore.cs       # Lưu AI settings ở %AppData%, mã hoá DPAPI
+│   ├── Services/AISettingsStore.cs       # Lưu AI settings ở %AppData%, 
+oá DPAPI
 │   ├── ShareDocumentForm.cs              # UI chia sẻ + share code regen
 │   ├── ShareManagementForm.cs            # Visibility + collaborators (advanced)
 │   ├── VersionHistoryForm.cs             # Liệt kê + restore version
@@ -337,7 +338,7 @@ NT106_Project_MarkTogether/
 | **Database** | PostgreSQL 16 (Docker) hoặc 13+ (local) | Persistent storage |
 | **Driver** | Npgsql 4.1.13 | ADO.NET provider |
 | **ORM** | Dapper 2.1.72 | Micro-ORM, parameterized query, snake_case ↔ PascalCase |
-| **Token** | `Guid.NewGuid().ToString("N")` cho session, `RandomNumberGenerator` cho sharing link | |
+| **Token** | `SecureTokenGenerator` (`RandomNumberGenerator`) cho session token và sharing link | |
 | **AI** | Google Gemini REST API | Chat / summarize / continue / translate; user chọn model, tự nhập API key |
 | **Triển khai** | Mono 5+ (Linux), systemd unit, Docker Compose (Postgres) | Production deploy lên VPS Linux |
 | **Health/Backup** | `pg_isready` healthcheck, `backup.sh` `pg_dump` | Production hardening |
@@ -417,7 +418,28 @@ Client lưu cấu hình tại:
 Nếu client chưa cấu hình key và server fallback cũng rỗng, tab AI sẽ báo:
 `"Bạn chưa cấu hình API key cho AI. Mở 'Cài đặt AI' bây giờ?"` và **không gửi request lên server**.
 
-#### 5.1.4. Cấu hình Client
+#### 5.1.4. (Tuỳ chọn) Cấu hình SMTP Brevo cho quên mật khẩu
+
+Chức năng **Quên mật khẩu** dùng Brevo SMTP relay để gửi OTP. Server đọc cấu hình từ `MarkTogether.Server/App.config`:
+
+```xml
+<add key="SmtpHost" value="smtp-relay.brevo.com" />
+<add key="SmtpPort" value="2525" />
+<add key="SmtpUser" value="your_brevo_smtp_login@smtp-brevo.com" />
+<add key="SmtpPassword" value="BREVO_SMTP_KEY" />
+<add key="SmtpFromEmail" value="your_verified_sender@example.com" />
+<add key="SmtpFromName" value="MarkTogether" />
+<add key="SmtpEnableSsl" value="true" />
+```
+
+- `SmtpUser` là **Brevo SMTP Login** trong Brevo Dashboard, thường có dạng `...@smtp-brevo.com`; không nhất thiết là email người gửi.
+- `SmtpPassword` là **Brevo SMTP key** lấy từ Brevo Dashboard, không phải mật khẩu email thật.
+- `SmtpFromEmail` là địa chỉ email hiển thị trong `From`; nên dùng sender đã được Brevo chấp nhận/xác thực. Tách riêng field này để app gửi giống test `swaks --auth-user ... --from ...`.
+- Port `2525` được dùng để tránh tình trạng VPS/provider chặn outbound SMTP chuẩn của Gmail trên `465/587`.
+- Không commit SMTP key lên git; production nên override bằng file env/secret riêng.
+- Nếu SMTP chưa cấu hình hoặc cấu hình sai, server log lỗi SMTP nhưng client vẫn nhận thông báo generic để tránh lộ email tồn tại hay không.
+
+#### 5.1.5. Cấu hình Client
 
 - File `MarkTogether.Client/server.config` chỉ định địa chỉ server:
 
@@ -428,11 +450,10 @@ PORT=5000
 
 Hiện tại `LoginForm.cs` đang **hardcode** `SocketClient.Instance.Connect("localhost", 5000)`. Khi chạy nội bộ, giữ nguyên là OK. Khi cần đổi IP (VPS), sửa `LoginForm.cs` (và `RegisterForm.cs`) theo `server.config` hoặc đặt biến môi trường rồi đọc trong code.
 
-#### 5.1.5. Build solution
+#### 5.1.6. Build solution
 
 ```cmd
-"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" ^
-  MarkTogether.sln /p:Configuration=Debug /t:Rebuild
+"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" MarkTogether.sln /p:Configuration=Debug /t:Rebuild
 ```
 
 Kết quả mong đợi: `Build succeeded. 0 Error(s)` cho 3 project (`Shared`, `Server`, `Client`).
@@ -561,7 +582,7 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
 
 ### 7.2. Đăng nhập (Login)
 
-- **Luồng:** `AUTH_LOGIN` → `BCrypt.Verify` → tạo Guid token → `SessionManager.AddSession`.
+- **Luồng:** `AUTH_LOGIN` → kiểm tra rate-limit → `BCrypt.Verify` → tạo CSPRNG token → `SessionManager.AddSession`.
 - **File:** `LoginForm.cs`, `SocketClient.Login`, `ClientHandler.HandleLogin`, `AuthService.Login`.
 - **Test:** nhập user vừa đăng ký, click "Đăng nhập".
 - **Kết quả:** chuyển sang `HomeForm`, header hiện `Xin chào, test1`.
@@ -569,48 +590,74 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   - `"Username không tồn tại"` / `"Mật khẩu không đúng"` → kiểm tra DB.
   - Treo > 15 s → server chết hoặc hostname sai → `TimeoutException`.
 
-### 7.3. Đăng xuất (Logout)
+### 7.3. Quên mật khẩu qua Brevo SMTP OTP
+
+- **Luồng:** `LoginForm` → link **Quên mật khẩu?** → `ForgotPasswordForm`.
+  1. Client gửi `AUTH_FORGOT_PASSWORD { Email }`.
+  2. Server lookup email; nếu tồn tại thì sinh OTP 6 số bằng CSPRNG, lưu SHA-256 hash trong `_resetOtps` in-memory với TTL 10 phút, rồi gửi Brevo SMTP relay.
+  3. Server luôn trả message generic `"Nếu email tồn tại, mã OTP đã được gửi."` để chống email enumeration.
+  4. Client nhập OTP + mật khẩu mới → `AUTH_RESET_PASSWORD { Email, Otp, NewPassword }`.
+  5. Server kiểm OTP hash/expiry, BCrypt hash mật khẩu mới, gọi `UserRepository.UpdatePassword`, xoá OTP one-shot và clear login-fail lock nếu có.
+- **File:** `ForgotPasswordForm.cs`, `SocketClient.RequestPasswordReset/ResetPassword`, `ClientHandler.HandleForgotPassword/HandleResetPassword`, `AuthService`, `EmailService`.
+- **Không đổi schema:** OTP lưu in-memory, server restart thì user cần xin OTP mới.
+- **User bị reset mật khẩu:** server xác định theo **email nhập ở Forgot Password**. Server gọi `UserRepository.GetByEmail(email)`, lưu OTP kèm `UserId`, và khi OTP đúng thì update password cho `entry.UserId`.
+- **Lỗi thường gặp:**
+  - `"Email không hợp lệ."` → nhập đúng email.
+  - `"OTP không đúng."` / `"OTP đã hết hạn."` → xin mã mới.
+  - Không nhận mail → kiểm tra `SmtpUser`, Brevo SMTP key, `SmtpFromEmail`, sender/domain Brevo đã verify, firewall outbound `smtp-relay.brevo.com:2525`, Spam/Promotions và Brevo Transactional logs.
+  - App log `"Reset OTP sent user=... email=..."` nhưng inbox không thấy → SMTP transaction đã được Brevo nhận; kiểm tra trạng thái delivery/bounce/deferred trong Brevo. Nếu test `swaks` dùng `--from` khác app, cấu hình lại `SmtpFromEmail` cho khớp.
+
+### 7.4. Đăng xuất (Logout)
 
 - **Luồng:** `AUTH_LOGOUT` → server gọi `SessionManager.LeaveAllRooms` + `RemoveSession` → trả `success=true`. Client clear `Token`/`UserId`.
 - **File:** `HomeForm.btnLogout_Click`, `SocketClient.Logout`, `ClientHandler.HandleLogout`.
 - **Test:** Bấm "Đăng xuất" trên `HomeForm` → confirm Yes.
 - **Kết quả:** Quay lại `LoginForm`. Token cũ không còn trong `_sessions`.
 
-### 7.4. Tạo tài liệu mới (Create Document)
+### 7.5. Tạo tài liệu mới (Create Document)
 
 - **Luồng:** `DOC_CREATE { title }` → `DocumentRepository.Create` (gen `doc_<guid>`) → `ShareCodeGenerator.GenerateUnique` → reply gồm `docID`, `shareCode`, `revision=0`.
 - **File:** `CreateDocumentForm.cs`, `HomeForm.btnCreateDocument_Click`, `ClientHandler.HandleDocCreate`.
 - **Test:** Trên HomeForm, bấm "Tạo mới" → nhập title `Demo`.
 - **Kết quả:** `TypeRenderForm` mở ra với title `Demo`, content rỗng, badge "Chủ sở hữu" màu xanh; `documents` có 1 row mới + share_code 8 ký tự.
 
-### 7.5. Import file `.md`
+### 7.6. Import file `.md`
 
 - **Luồng:** Client `OpenFileDialog` → `File.ReadAllText(path, Encoding.UTF8)` → normalize line endings `→ \r\n` → `DOC_CREATE { title=filename, content }`.
 - **Lý do normalize:** `txtRawMarkdown` là `TextBox` WinForms multiline — chỉ hiển thị xuống dòng với `\r\n`; file Linux/macOS dùng `\n` đơn sẽ bị hiện thành một dòng liền nếu không normalize.
 - **Test:** Chuẩn bị `sample.md` 100 dòng (cả Windows CRLF lẫn Unix LF), bấm "Import .md".
 - **Kết quả:** doc mới chứa toàn bộ nội dung; xuống dòng đúng trong raw editor; preview render đúng.
 
-### 7.6. Mở tài liệu (Open) + danh sách
+### 7.7. Mở tài liệu (Open) + danh sách
 
 - **Luồng list:** `DOC_LIST` → `DocumentRepository.GetByUserIdWithPermission` (LEFT JOIN `document_shares`) → trả `DocInfo[]`.
 - **Luồng open:** `DOC_OPEN { docID }` → server check permission → `SessionManager.JoinRoom(docId, this)` → reply `DOC_OPEN_Response`.
 - **Test:** ở `HomeForm`, đổi sort `Mới nhất / Cũ nhất / A→Z / Z→A`. Double-click 1 row.
 - **Kết quả:** danh sách sort đúng; mở doc thấy đúng content.
 
-### 7.7. Lưu tài liệu (Save)
+### 7.8. Lưu tài liệu (Save)
 
 - **Loại lưu:**
-  1. **Manual:** bấm nút Save → `DOC_SAVE`.
-  2. **Auto:** mỗi 30 s, nếu `_hasUnsavedChanges` và quyền edit, gọi `SaveDocument` (xem `AutosaveTimer_Tick`).
-- **Server:** `HandleDocSave` → kiểm `CanEdit` → `UpdateContent` → `DocumentVersionRepository.SaveVersion` (snapshot) → `TrimVersions(50)`.
+  1. **Manual:** bấm nút **Lưu** hoặc đóng form → `DOC_SAVE { kind="manual" }`.
+  2. **Periodic autosave:** user bật checkbox **Tự lưu** và chọn `1 / 5 / 30 phút` → `DOC_SAVE { kind="periodic", periodicIntervalMin=n }`.
+  3. **Draft debounce:** sau khi user dừng gõ 2 giây → `DOC_SAVE { kind="draft" }`.
+- **Version label convention:** không đổi schema, tận dụng `document_versions.label`.
+  | Kind | Label | Hành vi version |
+  |------|-------|-----------------|
+  | `manual` | `manual:Saved by <username>` | INSERT version mới, `TrimVersions(50)` |
+  | `periodic` | `periodic:<n>m by <username>` | INSERT version mới, `TrimVersions(50)` |
+  | `draft` | `draft:by <username>` | UPSERT 1 draft/version cho mỗi `(doc, user)`, không trim |
+- **Server:** `HandleDocSave` → kiểm `CanEdit` → `UpdateContent` → phân nhánh `kind`. Client/server cũ không gửi `kind` vẫn được treat như `manual`.
 - **Test:**
-  1. Gõ vài dòng → bấm Save → tiêu đề form đổi `MarkTogether - Demo (đã lưu lúc HH:mm:ss)`.
-  2. Đợi 30 s gõ tiếp → sẽ thấy `(tự lưu lúc ...)`.
+  1. Gõ vài dòng, dừng 2 giây → có draft `label LIKE 'draft:%'`, lần sau update cùng row.
+  2. Bấm Save → tiêu đề form đổi `MarkTogether - Demo (đã lưu lúc HH:mm:ss)`, có version `manual:%`.
+  3. Bật **Tự lưu** 1 phút, sửa nội dung và chờ tick → có version `periodic:1m%`.
+  4. Mở `VersionHistoryForm` → label có badge `Thủ công / Định kỳ / Nháp`.
 - **Lỗi:**
-  - Quyền viewer → ERROR `"Bạn không có quyền lưu tài liệu này."`.
+  - Quyền viewer/commenter → ERROR `"Bạn không có quyền lưu tài liệu này."`.
   - DB down → `"Lưu tài liệu thất bại."`.
 
-### 7.8. Realtime collaboration — Operational Transformation
+### 7.9. Realtime collaboration — Operational Transformation
 
 - **Luồng client → server:**
   1. `txtRawMarkdown_TextChanged` → `TrackRealtimeEditOps` → `ComputeTextDelta` → `QueueOperation`.
@@ -667,7 +714,7 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   2. **Paste dài:** copy 5000 ký tự, Ctrl+V — text hiện ngay, server console in op liên tục trong vài giây.
   3. **Multi-user:** gõ ở client A trong khi client B cũng gõ — text nhất quán ở cả 2 sau vài giây.
 
-### 7.9. Chia sẻ theo username + share code
+### 7.10. Chia sẻ theo username + share code
 
 - **Luồng:** Owner mở `ShareDocumentForm` → `DOC_SHARE { docID, targetUsername, permission }` → server thêm/cập nhật `document_shares`.
 - **Regen mã:** `DOC_SHARE_REGEN_CODE` → tạo code mới, cập nhật `documents.share_code`.
@@ -678,7 +725,7 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   3. user2 ở client khác chưa được share, nhập share code → vào doc (viewer).
 - **Kết quả:** `document_shares` có 1 hàng (`doc_id`, `user_id`, `permission`); với code thì user2 tự được thêm `viewer`.
 
-### 7.10. Sharing link (link công khai có expiry)
+### 7.11. Sharing link (link công khai có expiry)
 
 - **Luồng:** `DOC_CREATE_LINK` → `SecureTokenGenerator.GenerateUrlSafeToken(48)` (random + retry 3 lần) → INSERT `sharing_links`.
 - **Sử dụng:** Bất kỳ user logged-in nào gọi `DOC_JOIN_LINK { linkToken }` → server kiểm tra: active? hết hạn? quá `max_uses`? doc còn? → INSERT/UPDATE share + `IncrementUseCount` → reply doc info.
@@ -686,46 +733,46 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
 - **Test:** Owner tạo link 1 giờ, max 5 lần dùng. user2 join → use_count = 1.
 - **Lỗi:** "Sharing link đã hết hạn", "Sharing link đã vượt quá số lần sử dụng", "Sharing link không tồn tại hoặc đã bị thu hồi".
 
-### 7.11. Visibility (public / private / restricted)
+### 7.12. Visibility (public / private / restricted)
 
 - **Luồng:** `DOC_SET_VISIBILITY { docID, visibility, publicPermission }` → owner only → `documents.visibility`, `public_permission`.
 - **Public list:** `DOC_GET_PUBLIC_LIST` (page, limit) → trả các doc `visibility='public' AND deleted_at IS NULL`.
 - **`DocumentPermissionService.ResolvePermission`** ưu tiên: owner > direct share > public_permission (nếu visibility=public).
 - **Test:** Đặt visibility=public, publicPermission=viewer. Đăng nhập user khác (không share) → `DOC_OPEN` thành công với permission=viewer.
 
-### 7.12. Tìm kiếm tài liệu
+### 7.13. Tìm kiếm tài liệu
 
 - **Luồng:** `DOC_SEARCH { query, searchBy }` (`id` / `title` / `all`) → `DocumentRepository.SearchAccessibleDocuments` (PostgreSQL `pg_trgm` + RBAC).
 - **Test:** Có doc tiêu đề "Bài tập mạng". Search `mạng` → trả về doc.
 - **Yêu cầu:** Đã chạy `migration_v2.sql` (extension `pg_trgm` + `idx_documents_title_trgm`).
 
-### 7.13. Xoá tài liệu (soft delete)
+### 7.14. Xoá tài liệu (soft delete)
 
 - **Luồng:** `DOC_DELETE { docID }` (owner only) → `DocumentRepository.SoftDelete` (set `deleted_at`, `deleted_by`) → broadcast `DOC_RELOAD_BROADCAST` (clients đang mở sẽ phải xử lý).
 - **UI client (HomeForm):** Right-click vào tài liệu trong danh sách → "Xóa tài liệu" (menu item bị disabled nếu không phải owner). Hoặc focus danh sách + nhấn phím `Delete`. Confirm dialog mặc định chọn "Không" để chống xóa nhầm. Sau khi xóa thành công, danh sách tự reload.
 - **Khôi phục:** Hiện không có UI khôi phục, chỉ thao tác DB tay (`UPDATE documents SET deleted_at=NULL WHERE id=...`).
 
-### 7.14. Chat trong document
+### 7.15. Chat trong document
 
 - **Luồng:** `CHAT_SEND { docID, content }` → INSERT `chat_messages` → `BroadcastToRoom CHAT_BROADCAST`.
 - **History:** `CHAT_HISTORY { docID, limit }` → JOIN `users` lấy username.
 - **File:** `TypeRenderForm.btnChatSend_Click`, `HandleChatBroadcast`, `ChatRepository`.
 - **Test:** 2 client cùng doc, gõ chat → cả 2 thấy ngay; tab "Chat" có timestamp + username.
 
-### 7.15. Comment có anchor
+### 7.16. Comment có anchor
 
 - **Luồng:** Client chọn 1 đoạn text → `NewCommentForm` → `COMMENT_CREATE { docID, anchorStart, anchorEnd, anchorText, content, parentId }` → INSERT `document_comments` → broadcast `COMMENT_BROADCAST { action="created" }`.
 - **Resolve / Delete:** action `resolved` / `deleted`. Author hoặc owner mới được xoá.
 - **Test:** User A tạo comment trên đoạn "Hello" → User B nhận `COMMENT_BROADCAST`, danh sách comment refresh.
 
-### 7.16. Version history
+### 7.17. Version history
 
-- **Auto snapshot:** mỗi `DOC_SAVE` thành công, server `SaveVersion` (label = `"Saved by username"`) và `TrimVersions(50)`.
+- **Auto snapshot:** `DOC_SAVE` manual/periodic tạo version mới với label prefix `manual:` hoặc `periodic:`; draft dùng `UpsertDraftVersion` với label `draft:` để tránh spam history.
 - **List / Detail / Restore / Delete:** `DOC_VERSION_*`.
 - **Restore:** rewrite `documents.content` về snapshot, sau đó tạo version `"Restored from <id>"`, broadcast `DOC_RELOAD_BROADCAST` để mọi client đang mở reload nội dung.
 - **Test:** Save 5 lần (chỉnh nội dung khác nhau), mở `VersionHistoryForm` → restore version cũ → tab editor nhảy về nội dung cũ.
 
-### 7.17. Image upload + insert vào markdown
+### 7.18. Image upload + insert vào markdown
 
 - **Luồng:**
   1. Client `btnInsertImage_Click` → đọc file → `IMAGE_UPLOAD { fileName, mimeType, data, isAvatar=false, docID }` (data là `byte[]`, Newtonsoft tự encode base64).
@@ -737,7 +784,7 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   - `"Ảnh vượt quá 5 MB"` → resize.
   - `"MIME không hợp lệ"` → chỉ chấp nhận `image/png`, `image/jpeg`, `image/gif`, `image/webp`.
 
-### 7.18. AI suggestion + Action Mode
+### 7.19. AI suggestion + Action Mode
 
 - **Luồng cấu hình client:**
   1. User mở tab **Trợ lý AI** → **⚙ Cài đặt**.
@@ -903,6 +950,8 @@ Wire format: `[uint32_le LENGTH][UTF-8 JSON of Packet]`. `LENGTH` đọc trướ
 | Version | `DOC_VERSION_DETAIL` | C↔S | `Payload_DOC_VERSION_DETAIL_Request` | `Payload_DOC_VERSION_DETAIL_Response` |
 | Version | `DOC_VERSION_RESTORE` | C↔S | `Payload_DOC_VERSION_RESTORE_Request` | `Payload_DOC_VERSION_RESTORE_Response` |
 | Version | `DOC_VERSION_DELETE` | C↔S | `Payload_DOC_VERSION_DELETE_Request` | `Payload_DOC_VERSION_DELETE_Response` |
+| Auth | `AUTH_FORGOT_PASSWORD` | C↔S | `Payload_AUTH_FORGOT_PASSWORD_Request { Email }` | `Payload_AUTH_FORGOT_PASSWORD_Response` |
+| Auth | `AUTH_RESET_PASSWORD` | C↔S | `Payload_AUTH_RESET_PASSWORD_Request { Email, Otp, NewPassword }` | `Payload_AUTH_RESET_PASSWORD_Response` |
 | AI | `AI_REQUEST` | C→S | `Payload_AI_Request { docID, mode, userPrompt, contextText, provider, model, apiKey }` | `AI_RESPONSE` |
 | AI | `AI_RESPONSE` | S→C | — | `Payload_AI_Response` |
 | System | `OK` | S→C | — | `Payload_OK { Message }` |
@@ -1018,7 +1067,7 @@ sequenceDiagram
     DB-->>S: row + password_hash
     S->>S: BCrypt.Verify(password, hash)
     alt OK
-      S->>S: token = Guid.NewGuid("N")
+      S->>S: token = SecureTokenGenerator.GenerateUrlSafeToken(48)
       S->>S: SessionManager.AddSession(token, userId)
       S-->>C: AUTH_RESPONSE { Success=true, Token, UserId, Username }
       C->>C: SocketClient.Token = ...
@@ -1029,11 +1078,16 @@ sequenceDiagram
     end
 ```
 
-### 11.2. Hash mật khẩu
+### 11.2. Hash mật khẩu và OTP reset
 
 - BCrypt.Net-Next, `workFactor = 12` (~ 250 ms / hash).
 - Salt do BCrypt tự tạo, encode trong chuỗi `$2a$12$...`.
 - `BCrypt.Verify(password, hash)` so sánh constant-time.
+- Forgot password OTP:
+  - OTP 6 số sinh bằng `RandomNumberGenerator`.
+  - Server chỉ lưu SHA-256 hash của OTP trong `_resetOtps` in-memory, TTL 10 phút, cooldown gửi lại 60 giây.
+  - OTP one-shot: reset thành công thì xoá khỏi store.
+  - Log chỉ ghi user id và email masked; không log OTP plaintext.
 
 ### 11.3. Session management
 
@@ -1069,15 +1123,15 @@ Mọi handler đều log `[RBAC] <ACTION> denied user=... doc=... permission=non
 
 ### 11.6. Bảo mật mạng
 
-- **TCP plaintext.** Trong môi trường dev/đồ án, không dùng TLS. Trong production có thể đóng gói qua **stunnel** hoặc Nginx stream `proxy_pass` + TLS.
+- **TLS 1.2 mặc định qua `SslStream`.** Server dùng chứng chỉ PFX cấu hình bằng `TlsCertPath`/`TlsCertPassword`; client hỗ trợ pin thumbprint bằng `CERT_THUMB` trong `server.config` (để trống = dev/demo accept self-signed). thuaậ toaá RSA-3072 + SHA256
 - **Firewall:** chỉ mở 5000 cho IP cần thiết.
 - **Database loopback:** `docker-compose.prod.yml` bind `127.0.0.1:5432` → DB không truy cập từ Internet.
 - **App.config secrets:** Khuyến nghị dùng env `MARKTOGETHER_DB_CONNECTION` thay vì commit password. `App.config` hiện đang chứa placeholder `VPS_APP_IP` + password yếu — phải đổi trước khi deploy.
 
 ### 11.7. Điểm yếu đã biết
 
-- Token chỉ là Guid, không sign → chiếm token có thể giả mạo. Mitigation: TLS ở tầng vận chuyển + xoay token ngắn hạn (chưa implement).
-- Không rate-limit login → có thể brute force (Mitigation: thêm cooldown ở `AuthService.Login`).
+- ✅ Token session đã dùng CSPRNG (`SecureTokenGenerator.GenerateUrlSafeToken(48)`), không còn dùng `Guid.NewGuid()`.
+- ✅ Login đã có rate-limit in-memory theo username: 5 lần sai → khóa 15 phút.
 - Không CSRF/CORS vì không có HTTP, nên không áp dụng.
 - AI prompt có thể bị "prompt injection" vào contextText — đã giới hạn ≤ 20 000 ký tự, throttle 1 req/3 s/handler.
 
@@ -1239,9 +1293,8 @@ LoginForm ──(login OK)──▶ HomeForm
 
 ### 16.3. Vấn đề còn tồn tại / TODO
 
-- TLS chưa bật → token + nội dung tài liệu đi plaintext.
+- TLS 1.2 đã bật bằng `SslStream`; cần cấu hình PFX server cert đúng trước khi chạy.
 - Token in-memory → server restart mất phiên (đã có schema `user_sessions` cho phase nâng cấp).
-- Chưa có rate-limit login → cần thêm cooldown ở `AuthService`.
 - `LoginForm.cs` / `RegisterForm.cs` hardcode `localhost:5000` thay vì đọc `server.config` → cần refactor để đồng bộ với hướng dẫn user.
 - `App.config` server commit kèm placeholder secrets → khi clone về dev mới phải nhớ sửa.
 - ✅ ~~Chưa có UI xóa tài liệu~~ — đã thêm context menu + phím Delete trên HomeForm (22/05/2026).
@@ -1253,8 +1306,8 @@ LoginForm ──(login OK)──▶ HomeForm
 
 ### 16.4. Hướng phát triển
 
-1. **TLS** bằng SslStream hoặc đặt sau Nginx stream.
-2. **Persistent sessions** dựa trên bảng `user_sessions` (refresh token, multi-device).
+1. **Persistent sessions** dựa trên bảng `user_sessions` (refresh token, multi-device).
+2. **TLS production hardening**: bắt buộc cert pinning phía client và quản lý PFX bằng secret riêng.
 3. **Compaction OT history**: định kỳ rebase `document_operations` thành snapshot + bỏ ops cũ để tránh phình DB.
 4. **Cursor presence**: broadcast vị trí caret/selection của từng user → highlight realtime.
 5. **Awareness UI**: hiển thị avatar người đang xem/đang gõ.
@@ -1380,6 +1433,6 @@ sendFrequency ≈ max(r/5, 1/0.25) ≈ max(r/5, 4) requests/s
 ---
 
 > **Tài liệu này được tạo tự động bằng cách đọc toàn bộ source code + tài liệu trong `Plan/`.**  
-> Cập nhật cuối: 22/05/2026 — thêm xóa tài liệu, fix import newline, bật Logger.  
-> Changelog chi tiết: `Plan/BUGFIX_20260522_EDITOR_IMPORT_DELETE.md`  
+> Cập nhật cuối: 22/05/2026 — thêm xóa tài liệu, fix import newline, bật Logger; cập nhật Forgot Password dùng Brevo SMTP relay port 2525 và tách `SmtpFromEmail`.  
+> Changelog chi tiết: `Plan/BUGFIX_20260522_EDITOR_IMPORT_DELETE.md`; log SMTP: `Plan/LOGS/2026-05-22_231900_brevo_smtp_forgot_password_debug.md`  
 > Nếu phát hiện sai lệch giữa tài liệu và code, **code là nguồn sự thật** — vui lòng cập nhật tài liệu theo.

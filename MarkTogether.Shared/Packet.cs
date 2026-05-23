@@ -12,6 +12,8 @@ namespace MarkTogether.Shared
         AUTH_LOGIN,
         AUTH_RESPONSE,
         AUTH_LOGOUT,
+        AUTH_FORGOT_PASSWORD,
+        AUTH_RESET_PASSWORD,
 
         // ─── Document ─────────────────────────
         DOC_CREATE,
@@ -131,6 +133,30 @@ namespace MarkTogether.Shared
         public string message { get; set; }
     }
 
+    public class Payload_AUTH_FORGOT_PASSWORD_Request
+    {
+        public string Email { get; set; }
+    }
+
+    public class Payload_AUTH_FORGOT_PASSWORD_Response
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; }
+    }
+
+    public class Payload_AUTH_RESET_PASSWORD_Request
+    {
+        public string Email { get; set; }
+        public string Otp { get; set; }
+        public string NewPassword { get; set; }
+    }
+
+    public class Payload_AUTH_RESET_PASSWORD_Response
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; }
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  DOCUMENT
     // ═══════════════════════════════════════════════════════════
@@ -177,6 +203,8 @@ namespace MarkTogether.Shared
     {
         public string docID { get; set; }
         public string content { get; set; }
+        public string kind { get; set; } = "manual";
+        public int periodicIntervalMin { get; set; } = 0;
     }
 
     public class Payload_DOC_JOIN_CODE_Request

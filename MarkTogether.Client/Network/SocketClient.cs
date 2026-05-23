@@ -2,7 +2,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using MarkTogether.Shared;
@@ -18,7 +21,7 @@ namespace MarkTogether.Client.Network
     public class SocketClient
     {
         private TcpClient _tcp;
-        private NetworkStream _stream;
+        private Stream _stream;
         private bool _connected;
         private Thread _receiveThread;
         private volatile bool _stopReceive;
@@ -56,7 +59,14 @@ namespace MarkTogether.Client.Network
 
             _tcp = new TcpClient();
             _tcp.Connect(host, port);
-            _stream = _tcp.GetStream();
+
+            var ssl = new SslStream(
+                _tcp.GetStream(),
+                false,
+                ValidateServerCertificate);
+
+            ssl.AuthenticateAsClient(host, null, SslProtocols.Tls12, false);
+            _stream = ssl;
             _connected = true;
             _stopReceive = false;
 
@@ -66,6 +76,41 @@ namespace MarkTogether.Client.Network
                 Name = "MarkTogether-ReceiveLoop"
             };
             _receiveThread.Start();
+        }
+
+        private bool ValidateServerCertificate(object sender, X509Certificate certificate, X509Chain chain, System.Net.Security.SslPolicyErrors sslPolicyErrors)
+        {
+            string expectedThumb = LoadExpectedCertThumb();
+            if (string.IsNullOrEmpty(expectedThumb))
+                return true;
+
+            return certificate != null
+                && string.Equals(
+                    certificate.GetCertHashString(),
+                    expectedThumb.Replace(" ", "").Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string LoadExpectedCertThumb()
+        {
+            try
+            {
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server.config");
+                if (!File.Exists(path))
+                    return string.Empty;
+
+                foreach (var rawLine in File.ReadAllLines(path))
+                {
+                    string line = (rawLine ?? string.Empty).Trim();
+                    if (line.StartsWith("CERT_THUMB=", StringComparison.OrdinalIgnoreCase))
+                        return line.Substring("CERT_THUMB=".Length).Trim();
+                }
+            }
+            catch
+            {
+            }
+
+            return string.Empty;
         }
 
         /// <summary>
@@ -294,6 +339,24 @@ namespace MarkTogether.Client.Network
             }
         }
 
+        public Payload_AUTH_FORGOT_PASSWORD_Response RequestPasswordReset(string email)
+        {
+            EnsureConnected();
+            var response = Request(MessageType.AUTH_FORGOT_PASSWORD,
+                new Payload_AUTH_FORGOT_PASSWORD_Request { Email = email },
+                timeoutMs: 30000);
+            return ExtractOrThrow<Payload_AUTH_FORGOT_PASSWORD_Response>(response, MessageType.AUTH_FORGOT_PASSWORD);
+        }
+
+        public Payload_AUTH_RESET_PASSWORD_Response ResetPassword(string email, string otp, string newPassword)
+        {
+            EnsureConnected();
+            var response = Request(MessageType.AUTH_RESET_PASSWORD,
+                new Payload_AUTH_RESET_PASSWORD_Request { Email = email, Otp = otp, NewPassword = newPassword },
+                timeoutMs: 15000);
+            return ExtractOrThrow<Payload_AUTH_RESET_PASSWORD_Response>(response, MessageType.AUTH_RESET_PASSWORD);
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  DOCUMENT
         // ═══════════════════════════════════════════════════════════
@@ -342,11 +405,17 @@ namespace MarkTogether.Client.Network
             return ExtractOrThrow<Payload_DOC_DELETE_Response>(response, MessageType.DOC_DELETE);
         }
 
-        public void SaveDocument(string docId, string content)
+        public void SaveDocument(string docId, string content, string kind = "manual", int periodicMin = 0)
         {
             EnsureAuthenticated();
             var response = Request(MessageType.DOC_SAVE,
-                new Payload_DOC_SAVE_Request { docID = docId, content = content ?? string.Empty });
+                new Payload_DOC_SAVE_Request
+                {
+                    docID = docId,
+                    content = content ?? string.Empty,
+                    kind = kind,
+                    periodicIntervalMin = periodicMin
+                });
             if (response.Type == MessageType.ERROR)
             {
                 var err = response.GetPayload<Payload_ERROR>();

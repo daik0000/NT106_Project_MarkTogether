@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using MarkTogether.Shared;
 
@@ -16,15 +17,17 @@ namespace MarkTogether.Server.Network
     {
         private TcpListener _listener;
         private readonly int _port;
+        private readonly X509Certificate2 _serverCert;
         private bool _running;
 
         // [ADDED] Track active client handlers
         private static readonly List<ClientHandler> _activeHandlers = new List<ClientHandler>();
         private static readonly object _handlersLock = new object();
 
-        public SocketServer(int port = 5000)
+        public SocketServer(int port, X509Certificate2 cert)
         {
             _port = port;
+            _serverCert = cert;
         }
 
         /// <summary>
@@ -48,7 +51,7 @@ namespace MarkTogether.Server.Network
                     Console.WriteLine($"[Server] Client mới kết nối: {clientIp}");
 
                     // Tạo handler riêng cho client này, xử lý song song
-                    var handler = new ClientHandler(tcpClient);
+                    var handler = new ClientHandler(tcpClient, _serverCert);
                     
                     // [ADDED] Register handler
                     lock (_handlersLock)
@@ -56,7 +59,7 @@ namespace MarkTogether.Server.Network
                         _activeHandlers.Add(handler);
                     }
 
-                    Task.Run(() => {
+                    _ = Task.Run(() => {
                         try
                         {
                             handler.ProcessAsync();

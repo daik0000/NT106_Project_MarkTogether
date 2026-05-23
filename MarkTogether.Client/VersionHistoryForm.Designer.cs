@@ -40,21 +40,22 @@ namespace MarkTogether.Client
             // split
             // 
             this.split.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.split.Location = new System.Drawing.Point(0, 0);
+            this.split.Location = new System.Drawing.Point(AppTheme.SpaceLg, AppTheme.SpaceLg);
             this.split.Name = "split";
             this.split.Panel1.Controls.Add(this.listVersions);
             this.split.Panel1.BackColor = AppTheme.Surface;
             this.split.Panel2.Controls.Add(this.txtPreview);
             this.split.Panel2.BackColor = AppTheme.Surface;
             this.split.BackColor = AppTheme.Border;
-            this.split.Size = new System.Drawing.Size(940, 480);
-            this.split.SplitterDistance = 380;
-            this.split.SplitterWidth = 2;
+            this.split.Size = new System.Drawing.Size(1060, 560);
+            this.split.SplitterDistance = 360;
+            this.split.SplitterWidth = AppTheme.SpaceMd;
             // 
             // listVersions
             // 
             this.listVersions.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
                 this.colTime, this.colUser, this.colLabel });
+            this.listVersions.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.listVersions.Dock = System.Windows.Forms.DockStyle.Fill;
             this.listVersions.FullRowSelect = true;
             this.listVersions.HideSelection = false;
@@ -64,9 +65,9 @@ namespace MarkTogether.Client
             this.listVersions.View = System.Windows.Forms.View.Details;
             this.listVersions.SelectedIndexChanged += new System.EventHandler(this.listVersions_SelectedIndexChanged);
             // 
-            this.colTime.Text = "Thời gian"; this.colTime.Width = 160;
-            this.colUser.Text = "Người lưu"; this.colUser.Width = 110;
-            this.colLabel.Text = "Ghi chú"; this.colLabel.Width = 100;
+            this.colTime.Text = "Thời gian"; this.colTime.Width = 170;
+            this.colUser.Text = "Người lưu"; this.colUser.Width = 120;
+            this.colLabel.Text = "Ghi chú"; this.colLabel.Width = 180;
             // 
             // txtPreview
             // 
@@ -74,7 +75,7 @@ namespace MarkTogether.Client
             this.txtPreview.Font = AppTheme.Mono;
             this.txtPreview.ForeColor = AppTheme.TextPrimary;
             this.txtPreview.BackColor = AppTheme.Surface;
-            this.txtPreview.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtPreview.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.txtPreview.Multiline = true;
             this.txtPreview.Name = "txtPreview";
             this.txtPreview.ReadOnly = true;
@@ -90,10 +91,10 @@ namespace MarkTogether.Client
             this.pnlButtons.Controls.Add(this.btnClose);
             this.pnlButtons.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.pnlButtons.BackColor = AppTheme.Surface;
-            this.pnlButtons.Location = new System.Drawing.Point(0, 480);
+            this.pnlButtons.Location = new System.Drawing.Point(AppTheme.SpaceLg, 580);
             this.pnlButtons.Name = "pnlButtons";
-            this.pnlButtons.Size = new System.Drawing.Size(940, 60);
-            this.pnlButtons.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceLg, AppTheme.SpaceMd, AppTheme.SpaceLg, AppTheme.SpaceMd);
+            this.pnlButtons.Size = new System.Drawing.Size(1060, 72);
+            this.pnlButtons.Padding = new System.Windows.Forms.Padding(0, AppTheme.SpaceMd, 0, AppTheme.SpaceMd);
             // 
             // lblCount
             // 
@@ -107,7 +108,7 @@ namespace MarkTogether.Client
             // btnRefresh
             // 
             this.btnRefresh.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnRefresh.Location = new System.Drawing.Point(480, 14);
+            this.btnRefresh.Location = new System.Drawing.Point(560, 16);
             this.btnRefresh.Name = "btnRefresh";
             this.btnRefresh.Size = new System.Drawing.Size(100, AppTheme.ButtonHeightSmall);
             this.btnRefresh.Text = "Refresh";
@@ -116,7 +117,7 @@ namespace MarkTogether.Client
             // btnRestore
             // 
             this.btnRestore.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnRestore.Location = new System.Drawing.Point(590, 14);
+            this.btnRestore.Location = new System.Drawing.Point(680, 16);
             this.btnRestore.Name = "btnRestore";
             this.btnRestore.Size = new System.Drawing.Size(110, AppTheme.ButtonHeightSmall);
             this.btnRestore.Text = "Khôi phục";
@@ -125,7 +126,7 @@ namespace MarkTogether.Client
             // btnDelete
             // 
             this.btnDelete.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnDelete.Location = new System.Drawing.Point(710, 14);
+            this.btnDelete.Location = new System.Drawing.Point(810, 16);
             this.btnDelete.Name = "btnDelete";
             this.btnDelete.Size = new System.Drawing.Size(100, AppTheme.ButtonHeightSmall);
             this.btnDelete.Text = "Xoá";
@@ -134,7 +135,7 @@ namespace MarkTogether.Client
             // btnClose
             // 
             this.btnClose.Anchor = System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right;
-            this.btnClose.Location = new System.Drawing.Point(820, 14);
+            this.btnClose.Location = new System.Drawing.Point(930, 16);
             this.btnClose.Name = "btnClose";
             this.btnClose.Size = new System.Drawing.Size(100, AppTheme.ButtonHeightSmall);
             this.btnClose.Text = "Đóng";
@@ -145,10 +146,11 @@ namespace MarkTogether.Client
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.BackColor = AppTheme.Background;
-            this.ClientSize = new System.Drawing.Size(940, 540);
+            this.ClientSize = new System.Drawing.Size(1100, 680);
             this.Controls.Add(this.split);
             this.Controls.Add(this.pnlButtons);
-            this.MinimumSize = new System.Drawing.Size(700, 400);
+            this.MinimumSize = new System.Drawing.Size(900, 560);
+            this.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceLg);
             this.Name = "VersionHistoryForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Lịch sử phiên bản";

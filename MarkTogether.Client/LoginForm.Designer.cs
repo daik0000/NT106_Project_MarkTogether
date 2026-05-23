@@ -27,6 +27,7 @@ namespace MarkTogether.Client
             this.txtPassword = new System.Windows.Forms.TextBox();
             this.lblErrorBanner = new System.Windows.Forms.Label();
             this.btnLogin = new System.Windows.Forms.Button();
+            this.lnkForgotPassword = new System.Windows.Forms.LinkLabel();
             this.lblFooter = new System.Windows.Forms.Label();
             this.lnkRegister = new System.Windows.Forms.LinkLabel();
             this.pnlCard.SuspendLayout();
@@ -46,6 +47,7 @@ namespace MarkTogether.Client
             this.pnlCard.Controls.Add(this.lblPassword);
             this.pnlCard.Controls.Add(this.pnlPassword);
             this.pnlCard.Controls.Add(this.lblErrorBanner);
+            this.pnlCard.Controls.Add(this.lnkForgotPassword);
             this.pnlCard.Controls.Add(this.btnLogin);
             this.pnlCard.Controls.Add(this.lblFooter);
             this.pnlCard.Controls.Add(this.lnkRegister);
@@ -181,6 +183,22 @@ namespace MarkTogether.Client
             this.lblErrorBanner.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.lblErrorBanner.Visible = false;
             // 
+            // lnkForgotPassword
+            // 
+            this.lnkForgotPassword.ActiveLinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(64)))), ((int)(((byte)(175)))));
+            this.lnkForgotPassword.AutoSize = true;
+            this.lnkForgotPassword.Font = new System.Drawing.Font("Inter", 9F, System.Drawing.FontStyle.Bold);
+            this.lnkForgotPassword.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
+            this.lnkForgotPassword.LinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
+            this.lnkForgotPassword.Location = new System.Drawing.Point(600, 630);
+            this.lnkForgotPassword.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lnkForgotPassword.Name = "lnkForgotPassword";
+            this.lnkForgotPassword.Size = new System.Drawing.Size(205, 29);
+            this.lnkForgotPassword.TabIndex = 7;
+            this.lnkForgotPassword.TabStop = true;
+            this.lnkForgotPassword.Text = "Quên mật khẩu?";
+            this.lnkForgotPassword.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkForgotPassword_LinkClicked);
+            // 
             // btnLogin
             // 
             this.btnLogin.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
@@ -262,6 +280,7 @@ namespace MarkTogether.Client
         private System.Windows.Forms.TextBox txtPassword;
         private System.Windows.Forms.Button btnLogin;
         private System.Windows.Forms.Label lblErrorBanner;
+        private System.Windows.Forms.LinkLabel lnkForgotPassword;
         private System.Windows.Forms.Label lblFooter;
         private System.Windows.Forms.LinkLabel lnkRegister;
     }
