@@ -11,6 +11,7 @@
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateResourceMSBuildArchitecture>CurrentArchitecture</GenerateResourceMSBuildArchitecture>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -45,7 +46,6 @@
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
@@ -61,6 +61,7 @@
     <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
+    <Reference Include="System.Security" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -72,6 +73,27 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AISettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AISettingsForm.Designer.cs">
+      <DependentUpon>AISettingsForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="AIEditPreviewForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AIEditPreviewForm.Designer.cs">
+      <DependentUpon>AIEditPreviewForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="ForgotPasswordForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ForgotPasswordForm.Designer.cs">
+      <DependentUpon>ForgotPasswordForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Services\AIEditPlanApplier.cs" />
+    <Compile Include="Services\AIEditPlanModels.cs" />
+    <Compile Include="Services\AISettingsStore.cs" />
     <Compile Include="TypeRenderForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -99,13 +121,28 @@
     <Compile Include="CreateDocumentForm.Designer.cs">
       <DependentUpon>CreateDocumentForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Network\SocketClient.cs" />
     <Compile Include="Network\Logger.cs" />
-    <Compile Include="ShareManagementForm.cs">
+    <Compile Include="Network\ServerEndpointConfig.cs" />
+    <Compile Include="Network\SocketClient.cs" />
+    <Compile Include="UI\AppTheme.cs" />
+    <Compile Include="UI\UiFactory.cs" />
+    <Compile Include="NewCommentForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="ShareManagementForm.Designer.cs">
-      <DependentUpon>ShareManagementForm.cs</DependentUpon>
+    <Compile Include="NewCommentForm.Designer.cs">
+      <DependentUpon>NewCommentForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="ShareDocumentForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="ShareDocumentForm.Designer.cs">
+      <DependentUpon>ShareDocumentForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="VersionHistoryForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="VersionHistoryForm.Designer.cs">
+      <DependentUpon>VersionHistoryForm.cs</DependentUpon>
     </Compile>
     <Compile Include="RegisterForm.cs">
       <SubType>Form</SubType>
@@ -115,6 +152,9 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <EmbeddedResource Include="LoginForm.resx">
+      <DependentUpon>LoginForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -124,6 +164,9 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <EmbeddedResource Include="RegisterForm.resx">
+      <DependentUpon>RegisterForm.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="TypeRenderForm.resx">
       <DependentUpon>TypeRenderForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -148,6 +191,7 @@
     <ProjectReference Include="..\MarkTogether.Shared\Shared.csproj">
       <Project>{2d1c0b86-2d99-4c01-9eca-def9ed32e4bd}</Project>
       <Name>Shared</Name>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
   </ItemGroup>
   <Import Project="..\packages\Microsoft.Web.WebView2.1.0.3405.78\build\Microsoft.Web.WebView2.targets" Condition="Exists('..\packages\Microsoft.Web.WebView2.1.0.3405.78\build\Microsoft.Web.WebView2.targets')" />

@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
+using MarkTogether.Client.UI;
 using MarkTogether.Shared;
 
 namespace MarkTogether.Client
@@ -10,6 +11,57 @@ namespace MarkTogether.Client
         public LoginForm()
         {
             InitializeComponent();
+            Load += LoginForm_Load;
+            Resize += (s, e) => CenterCard();
+        }
+
+        private void LoginForm_Load(object sender, EventArgs e)
+        {
+            CenterCard();
+
+            // Apply rounded styling cho card / button
+            UiFactory.StyleAsCard(pnlCard);
+            UiFactory.StylePrimaryButton(btnLogin);
+            UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
+            lblErrorBanner.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
+
+            // Input panels: chỉ vẽ border, KHÔNG clip Region (tránh mất nét)
+            UiFactory.StyleInputPanel(pnlUsername);
+            UiFactory.StyleInputPanel(pnlPassword);
+
+            // Focus highlight cho input
+            WireInputFocus(pnlUsername, txtUsername);
+            WireInputFocus(pnlPassword, txtPassword);
+        }
+
+        private void CenterCard()
+        {
+            pnlCard.Left = Math.Max(0, (ClientSize.Width - pnlCard.Width) / 2);
+            pnlCard.Top = Math.Max(0, (ClientSize.Height - pnlCard.Height) / 2);
+        }
+
+        private void WireInputFocus(Panel panel, TextBox tb)
+        {
+            tb.GotFocus += (s, e) => { panel.Tag = "focus"; panel.Invalidate(); };
+            tb.LostFocus += (s, e) => { panel.Tag = null; panel.Invalidate(); };
+            panel.Paint += (s, e) =>
+            {
+                bool focused = panel.Tag as string == "focus";
+                UiFactory.DrawBorder(e.Graphics, panel.ClientRectangle,
+                    focused ? AppTheme.BorderFocus : AppTheme.Border,
+                    AppTheme.CornerRadius);
+            };
+        }
+
+        private void ShowError(string message)
+        {
+            lblErrorBanner.Text = "  " + message;
+            lblErrorBanner.Visible = true;
+        }
+
+        private void ClearError()
+        {
+            lblErrorBanner.Visible = false;
         }
 
         private void btnLogin_Click(object sender, EventArgs e)
@@ -17,11 +69,9 @@ namespace MarkTogether.Client
             string username = txtUsername.Text.Trim();
             string password = txtPassword.Text;
 
-            // Validate
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
-                lblError.Text = "Vui lòng nhập đầy đủ thông tin!";
-                lblError.Visible = true;
+                ShowError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.");
                 return;
             }
 
@@ -29,22 +79,13 @@ namespace MarkTogether.Client
             {
                 btnLogin.Enabled = false;
                 btnLogin.Text = "Đang đăng nhập...";
-                lblError.Visible = false;
+                ClearError();
 
-                // Kết nối server (nếu chưa)
-                SocketClient.Instance.Connect();
-
-                // Gửi yêu cầu đăng nhập
+                SocketClient.Instance.ConnectFromConfig();
                 Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
 
                 if (result.Success)
                 {
-                    // Thành công → mở HomeForm
-                    MessageBox.Show($"Chào mừng {result.Username}!",
-                        "Đăng nhập thành công",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-
                     this.Hide();
                     var homeForm = new HomeForm();
                     homeForm.FormClosed += (s, args) =>
@@ -56,20 +97,13 @@ namespace MarkTogether.Client
                 }
                 else
                 {
-                    // Thất bại → hiện lỗi
-                    lblError.Text = result.Message;
-                    lblError.Visible = true;
+                    ShowError(result.Message ?? "Tên đăng nhập hoặc mật khẩu không đúng.");
                     SocketClient.Instance.Disconnect();
                 }
             }
             catch (Exception ex)
             {
-                lblError.Text = "Không thể kết nối đến server!";
-                lblError.Visible = true;
-                MessageBox.Show($"Chi tiết lỗi: {ex.Message}",
-                    "Lỗi kết nối",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ShowError("Không thể kết nối đến server. " + ex.Message);
             }
             finally
             {
@@ -80,12 +114,29 @@ namespace MarkTogether.Client
 
         private void lnkRegister_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            // Mở form đăng ký
-            var registerForm = new RegisterForm();
-            registerForm.ShowDialog(this);
+            using (var registerForm = new RegisterForm())
+            {
+                registerForm.ShowDialog(this);
+            }
         }
 
-        // Cho phép nhấn Enter để đăng nhập
+        private void lnkForgotPassword_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            try
+            {
+                SocketClient.Instance.ConnectFromConfig();
+            }
+            catch
+            {
+                // Dialog sẽ hiển thị lỗi cụ thể nếu request không kết nối được.
+            }
+
+            using (var dlg = new ForgotPasswordForm())
+            {
+                dlg.ShowDialog(this);
+            }
+        }
+
         private void txtPassword_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
@@ -105,5 +156,6 @@ namespace MarkTogether.Client
                 e.SuppressKeyPress = true;
             }
         }
+
     }
 }

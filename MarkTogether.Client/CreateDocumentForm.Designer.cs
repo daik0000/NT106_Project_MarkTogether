@@ -1,122 +1,126 @@
+using MarkTogether.Client.UI;
+
 namespace MarkTogether.Client
 {
     partial class CreateDocumentForm
     {
-        /// <summary>
-        /// Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-            }
+            if (disposing && (components != null)) components.Dispose();
             base.Dispose(disposing);
         }
 
         #region Windows Form Designer generated code
-
-        /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
-        /// </summary>
         private void InitializeComponent()
         {
-            this.lblTitle = new System.Windows.Forms.Label();
+            this.lblHeading = new System.Windows.Forms.Label();
+            this.lblSubtitle = new System.Windows.Forms.Label();
+            this.lblFieldTitle = new System.Windows.Forms.Label();
+            this.pnlTitle = new System.Windows.Forms.Panel();
             this.txtTitle = new System.Windows.Forms.TextBox();
+            this.lblError = new System.Windows.Forms.Label();
             this.btnCreate = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
-            this.lblError = new System.Windows.Forms.Label();
+            this.pnlTitle.SuspendLayout();
             this.SuspendLayout();
-            // 
-            // lblTitle
-            // 
-            this.lblTitle.AutoSize = true;
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.Location = new System.Drawing.Point(18, 16);
-            this.lblTitle.Name = "lblTitle";
-            this.lblTitle.Size = new System.Drawing.Size(95, 19);
-            this.lblTitle.TabIndex = 0;
-            this.lblTitle.Text = "Document title:";
-            // 
-            // txtTitle
-            // 
-            this.txtTitle.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.txtTitle.Location = new System.Drawing.Point(22, 42);
-            this.txtTitle.Name = "txtTitle";
-            this.txtTitle.Size = new System.Drawing.Size(425, 25);
-            this.txtTitle.TabIndex = 1;
+            //
+            // Heading + subtitle
+            //
+            this.lblHeading.AutoSize = true;
+            this.lblHeading.Font = AppTheme.H2;
+            this.lblHeading.ForeColor = AppTheme.TextPrimary;
+            this.lblHeading.Location = new System.Drawing.Point(24, 22);
+            this.lblHeading.Text = "Tạo tài liệu mới";
+            //
+            this.lblSubtitle.AutoSize = true;
+            this.lblSubtitle.Font = AppTheme.Subtitle;
+            this.lblSubtitle.ForeColor = AppTheme.TextSecondary;
+            this.lblSubtitle.Location = new System.Drawing.Point(24, 56);
+            this.lblSubtitle.Text = "Đặt tên cho tài liệu để bắt đầu cộng tác.";
+            //
+            // Field
+            //
+            this.lblFieldTitle.AutoSize = true;
+            this.lblFieldTitle.Font = AppTheme.BodyBold;
+            this.lblFieldTitle.ForeColor = AppTheme.TextPrimary;
+            this.lblFieldTitle.Location = new System.Drawing.Point(24, 96);
+            this.lblFieldTitle.Text = "Tiêu đề";
+            //
+            this.pnlTitle.BackColor = AppTheme.Surface;
+            this.pnlTitle.Location = new System.Drawing.Point(24, 122);
+            this.pnlTitle.Size = new System.Drawing.Size(432, AppTheme.InputHeight);
+            this.pnlTitle.Padding = new System.Windows.Forms.Padding(AppTheme.SpaceMd, 0, AppTheme.SpaceMd, 0);
+            this.pnlTitle.Name = "pnlTitle";
+            //
+            this.txtTitle.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtTitle.Font = AppTheme.Body;
+            this.txtTitle.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtTitle.TextChanged += new System.EventHandler(this.txtTitle_TextChanged);
             this.txtTitle.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtTitle_KeyDown);
-            // 
-            // btnCreate
-            // 
-            this.btnCreate.BackColor = System.Drawing.Color.DodgerBlue;
-            this.btnCreate.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnCreate.ForeColor = System.Drawing.Color.White;
-            this.btnCreate.Location = new System.Drawing.Point(291, 100);
-            this.btnCreate.Name = "btnCreate";
-            this.btnCreate.Size = new System.Drawing.Size(75, 30);
-            this.btnCreate.TabIndex = 2;
-            this.btnCreate.Text = "Create";
-            this.btnCreate.UseVisualStyleBackColor = false;
-            this.btnCreate.Click += new System.EventHandler(this.btnCreate_Click);
-            // 
-            // btnCancel
-            // 
-            this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-            this.btnCancel.Location = new System.Drawing.Point(372, 100);
-            this.btnCancel.Name = "btnCancel";
-            this.btnCancel.Size = new System.Drawing.Size(75, 30);
-            this.btnCancel.TabIndex = 3;
-            this.btnCancel.Text = "Cancel";
-            this.btnCancel.UseVisualStyleBackColor = true;
-            // 
-            // lblError
-            // 
-            this.lblError.ForeColor = System.Drawing.Color.Red;
-            this.lblError.Location = new System.Drawing.Point(22, 76);
-            this.lblError.Name = "lblError";
-            this.lblError.Size = new System.Drawing.Size(425, 18);
-            this.lblError.TabIndex = 4;
-            this.lblError.Text = "error";
+            this.txtTitle.Name = "txtTitle";
+            this.pnlTitle.Controls.Add(this.txtTitle);
+            //
+            // Error
+            //
             this.lblError.Visible = false;
-            // 
-            // CreateDocumentForm
-            // 
+            this.lblError.AutoSize = false;
+            this.lblError.Font = AppTheme.Caption;
+            this.lblError.ForeColor = AppTheme.Error;
+            this.lblError.Location = new System.Drawing.Point(24, 170);
+            this.lblError.Size = new System.Drawing.Size(432, 22);
+            this.lblError.Name = "lblError";
+            //
+            // Buttons
+            //
+            this.btnCancel.Location = new System.Drawing.Point(254, 208);
+            this.btnCancel.Size = new System.Drawing.Size(100, AppTheme.ButtonHeight);
+            this.btnCancel.Text = "Huỷ";
+            this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.btnCancel.Name = "btnCancel";
+            //
+            this.btnCreate.Location = new System.Drawing.Point(360, 208);
+            this.btnCreate.Size = new System.Drawing.Size(100, AppTheme.ButtonHeight);
+            this.btnCreate.Text = "Tạo";
+            this.btnCreate.Name = "btnCreate";
+            this.btnCreate.Click += new System.EventHandler(this.btnCreate_Click);
+            //
+            // Form
+            //
             this.AcceptButton = this.btnCreate;
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.btnCancel;
-            this.ClientSize = new System.Drawing.Size(468, 149);
-            this.Controls.Add(this.lblError);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.BackColor = AppTheme.Surface;
+            this.ClientSize = new System.Drawing.Size(484, 270);
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnCreate);
-            this.Controls.Add(this.txtTitle);
-            this.Controls.Add(this.lblTitle);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
+            this.Controls.Add(this.lblError);
+            this.Controls.Add(this.pnlTitle);
+            this.Controls.Add(this.lblFieldTitle);
+            this.Controls.Add(this.lblSubtitle);
+            this.Controls.Add(this.lblHeading);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
-            this.Name = "CreateDocumentForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Create new document";
+            this.Name = "CreateDocumentForm";
+            this.Text = "Tài liệu mới";
+            this.pnlTitle.ResumeLayout(false);
+            this.pnlTitle.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
-
         }
-
         #endregion
 
-        private System.Windows.Forms.Label lblTitle;
+        private System.Windows.Forms.Label lblHeading;
+        private System.Windows.Forms.Label lblSubtitle;
+        private System.Windows.Forms.Label lblFieldTitle;
+        private System.Windows.Forms.Panel pnlTitle;
         private System.Windows.Forms.TextBox txtTitle;
+        private System.Windows.Forms.Label lblError;
         private System.Windows.Forms.Button btnCreate;
         private System.Windows.Forms.Button btnCancel;
-        private System.Windows.Forms.Label lblError;
     }
 }

@@ -8,10 +8,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Server", "MarkTogether.Serv
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "MarkTogether.Shared\Shared.csproj", "{2D1C0B86-2D99-4C01-9ECA-DEF9ED32E4BD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Gateway", "LoadBalancing\MarkTogether.Gateway\MarkTogether.Gateway.csproj", "{C7B9CE56-FBB9-4E18-8D50-E3948A10CA6A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{323C1D92-5CFE-4B33-ADDE-D1047D552E33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -26,8 +31,9 @@ Global
 		{2D1C0B86-2D99-4C01-9ECA-DEF9ED32E4BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2D1C0B86-2D99-4C01-9ECA-DEF9ED32E4BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2D1C0B86-2D99-4C01-9ECA-DEF9ED32E4BD}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
+		{C7B9CE56-FBB9-4E18-8D50-E3948A10CA6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7B9CE56-FBB9-4E18-8D50-E3948A10CA6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7B9CE56-FBB9-4E18-8D50-E3948A10CA6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7B9CE56-FBB9-4E18-8D50-E3948A10CA6A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

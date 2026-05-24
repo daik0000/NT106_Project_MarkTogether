@@ -24,6 +24,8 @@ namespace MarkTogether.Server.Database.Models
 
         public string MimeType { get; set; }
         public int? Size { get; set; }
+        public string Sha256Hash { get; set; }
+        public string DocId { get; set; }
         public DateTime UploadedAt { get; set; }
     }
 }

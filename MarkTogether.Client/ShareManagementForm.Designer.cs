@@ -319,8 +319,8 @@ namespace MarkTogether.Client
             this.Controls.Add(this.lblShareCode);
             this.Controls.Add(this.lblShareCodeHeader);
             this.Controls.Add(this.lblTitle);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.MinimizeBox = false;
             this.Name = "ShareManagementForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;

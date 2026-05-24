@@ -1,193 +1,287 @@
+using MarkTogether.Client.UI;
+
 namespace MarkTogether.Client
 {
     partial class LoginForm
     {
-        /// <summary>
-        /// Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-            }
+            if (disposing && (components != null)) components.Dispose();
             base.Dispose(disposing);
         }
 
         #region Windows Form Designer generated code
-
-        /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
-        /// </summary>
         private void InitializeComponent()
         {
-            this.pnlMain = new System.Windows.Forms.Panel();
+            this.pnlCard = new System.Windows.Forms.Panel();
+            this.lblBrand = new System.Windows.Forms.Label();
             this.lblTitle = new System.Windows.Forms.Label();
             this.lblSubtitle = new System.Windows.Forms.Label();
             this.lblUsername = new System.Windows.Forms.Label();
+            this.pnlUsername = new System.Windows.Forms.Panel();
             this.txtUsername = new System.Windows.Forms.TextBox();
             this.lblPassword = new System.Windows.Forms.Label();
+            this.pnlPassword = new System.Windows.Forms.Panel();
             this.txtPassword = new System.Windows.Forms.TextBox();
+            this.lblErrorBanner = new System.Windows.Forms.Label();
             this.btnLogin = new System.Windows.Forms.Button();
+            this.lnkForgotPassword = new System.Windows.Forms.LinkLabel();
+            this.lblFooter = new System.Windows.Forms.Label();
             this.lnkRegister = new System.Windows.Forms.LinkLabel();
-            this.lblError = new System.Windows.Forms.Label();
-            this.pnlMain.SuspendLayout();
+            this.pnlCard.SuspendLayout();
+            this.pnlUsername.SuspendLayout();
+            this.pnlPassword.SuspendLayout();
             this.SuspendLayout();
             // 
-            // pnlMain
+            // pnlCard
             // 
-            this.pnlMain.Anchor = System.Windows.Forms.AnchorStyles.None;
-            this.pnlMain.BackColor = System.Drawing.Color.White;
-            this.pnlMain.Controls.Add(this.lblTitle);
-            this.pnlMain.Controls.Add(this.lblSubtitle);
-            this.pnlMain.Controls.Add(this.lblUsername);
-            this.pnlMain.Controls.Add(this.txtUsername);
-            this.pnlMain.Controls.Add(this.lblPassword);
-            this.pnlMain.Controls.Add(this.txtPassword);
-            this.pnlMain.Controls.Add(this.btnLogin);
-            this.pnlMain.Controls.Add(this.lnkRegister);
-            this.pnlMain.Controls.Add(this.lblError);
-            this.pnlMain.Location = new System.Drawing.Point(150, 50);
-            this.pnlMain.Name = "pnlMain";
-            this.pnlMain.Size = new System.Drawing.Size(380, 400);
-            this.pnlMain.TabIndex = 0;
+            this.pnlCard.Anchor = System.Windows.Forms.AnchorStyles.None;
+            this.pnlCard.BackColor = System.Drawing.Color.White;
+            this.pnlCard.Controls.Add(this.lblBrand);
+            this.pnlCard.Controls.Add(this.lblTitle);
+            this.pnlCard.Controls.Add(this.lblSubtitle);
+            this.pnlCard.Controls.Add(this.lblUsername);
+            this.pnlCard.Controls.Add(this.pnlUsername);
+            this.pnlCard.Controls.Add(this.lblPassword);
+            this.pnlCard.Controls.Add(this.pnlPassword);
+            this.pnlCard.Controls.Add(this.lblErrorBanner);
+            this.pnlCard.Controls.Add(this.lnkForgotPassword);
+            this.pnlCard.Controls.Add(this.btnLogin);
+            this.pnlCard.Controls.Add(this.lblFooter);
+            this.pnlCard.Controls.Add(this.lnkRegister);
+            this.pnlCard.Location = new System.Drawing.Point(360, 140);
+            this.pnlCard.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlCard.Name = "pnlCard";
+            this.pnlCard.Padding = new System.Windows.Forms.Padding(64);
+            this.pnlCard.Size = new System.Drawing.Size(880, 1000);
+            this.pnlCard.TabIndex = 0;
+            // 
+            // lblBrand
+            // 
+            this.lblBrand.AutoSize = true;
+            this.lblBrand.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblBrand.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblBrand.Location = new System.Drawing.Point(72, 72);
+            this.lblBrand.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblBrand.Name = "lblBrand";
+            this.lblBrand.Size = new System.Drawing.Size(207, 29);
+            this.lblBrand.TabIndex = 0;
+            this.lblBrand.Text = "MARKTOGETHER";
             // 
             // lblTitle
             // 
-            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
-            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(33, 150, 243);
-            this.lblTitle.Location = new System.Drawing.Point(20, 20);
+            this.lblTitle.AutoSize = true;
+            this.lblTitle.Font = new System.Drawing.Font("Inter", 22F, System.Drawing.FontStyle.Bold);
+            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblTitle.Location = new System.Drawing.Point(72, 120);
+            this.lblTitle.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lblTitle.Name = "lblTitle";
-            this.lblTitle.Size = new System.Drawing.Size(340, 45);
-            this.lblTitle.TabIndex = 0;
-            this.lblTitle.Text = "MarkTogether";
-            this.lblTitle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.lblTitle.Size = new System.Drawing.Size(340, 71);
+            this.lblTitle.TabIndex = 1;
+            this.lblTitle.Text = "Đăng nhập";
             // 
             // lblSubtitle
             // 
-            this.lblSubtitle.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.lblSubtitle.ForeColor = System.Drawing.Color.Gray;
-            this.lblSubtitle.Location = new System.Drawing.Point(20, 65);
+            this.lblSubtitle.AutoSize = true;
+            this.lblSubtitle.Font = new System.Drawing.Font("Inter", 11F);
+            this.lblSubtitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblSubtitle.Location = new System.Drawing.Point(72, 220);
+            this.lblSubtitle.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lblSubtitle.Name = "lblSubtitle";
-            this.lblSubtitle.Size = new System.Drawing.Size(340, 25);
-            this.lblSubtitle.TabIndex = 1;
-            this.lblSubtitle.Text = "Đăng nhập để tiếp tục";
-            this.lblSubtitle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.lblSubtitle.Size = new System.Drawing.Size(467, 36);
+            this.lblSubtitle.TabIndex = 2;
+            this.lblSubtitle.Text = "Đăng nhập để tiếp tục cộng tác.";
             // 
             // lblUsername
             // 
             this.lblUsername.AutoSize = true;
-            this.lblUsername.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.lblUsername.Location = new System.Drawing.Point(30, 115);
+            this.lblUsername.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblUsername.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblUsername.Location = new System.Drawing.Point(72, 324);
+            this.lblUsername.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lblUsername.Name = "lblUsername";
-            this.lblUsername.Size = new System.Drawing.Size(77, 19);
-            this.lblUsername.TabIndex = 2;
-            this.lblUsername.Text = "Username:";
+            this.lblUsername.Size = new System.Drawing.Size(210, 33);
+            this.lblUsername.TabIndex = 3;
+            this.lblUsername.Text = "Tên đăng nhập";
+            // 
+            // pnlUsername
+            // 
+            this.pnlUsername.BackColor = System.Drawing.Color.White;
+            this.pnlUsername.Controls.Add(this.txtUsername);
+            this.pnlUsername.Location = new System.Drawing.Point(70, 375);
+            this.pnlUsername.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlUsername.Name = "pnlUsername";
+            this.pnlUsername.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlUsername.Size = new System.Drawing.Size(736, 76);
+            this.pnlUsername.TabIndex = 4;
             // 
             // txtUsername
             // 
-            this.txtUsername.Font = new System.Drawing.Font("Segoe UI", 11F);
-            this.txtUsername.Location = new System.Drawing.Point(33, 140);
+            this.txtUsername.BackColor = System.Drawing.Color.White;
+            this.txtUsername.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtUsername.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtUsername.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtUsername.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.txtUsername.Location = new System.Drawing.Point(24, 20);
+            this.txtUsername.Margin = new System.Windows.Forms.Padding(6);
             this.txtUsername.Name = "txtUsername";
-            this.txtUsername.Size = new System.Drawing.Size(310, 27);
-            this.txtUsername.TabIndex = 3;
+            this.txtUsername.Size = new System.Drawing.Size(688, 33);
+            this.txtUsername.TabIndex = 0;
             this.txtUsername.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtUsername_KeyDown);
             // 
             // lblPassword
             // 
             this.lblPassword.AutoSize = true;
-            this.lblPassword.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.lblPassword.Location = new System.Drawing.Point(30, 185);
+            this.lblPassword.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lblPassword.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.lblPassword.Location = new System.Drawing.Point(72, 488);
+            this.lblPassword.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lblPassword.Name = "lblPassword";
-            this.lblPassword.Size = new System.Drawing.Size(73, 19);
-            this.lblPassword.TabIndex = 4;
-            this.lblPassword.Text = "Password:";
+            this.lblPassword.Size = new System.Drawing.Size(138, 33);
+            this.lblPassword.TabIndex = 5;
+            this.lblPassword.Text = "Mật khẩu";
+            // 
+            // pnlPassword
+            // 
+            this.pnlPassword.BackColor = System.Drawing.Color.White;
+            this.pnlPassword.Controls.Add(this.txtPassword);
+            this.pnlPassword.Location = new System.Drawing.Point(72, 540);
+            this.pnlPassword.Margin = new System.Windows.Forms.Padding(6);
+            this.pnlPassword.Name = "pnlPassword";
+            this.pnlPassword.Padding = new System.Windows.Forms.Padding(24, 20, 24, 0);
+            this.pnlPassword.Size = new System.Drawing.Size(736, 76);
+            this.pnlPassword.TabIndex = 6;
             // 
             // txtPassword
             // 
-            this.txtPassword.Font = new System.Drawing.Font("Segoe UI", 11F);
-            this.txtPassword.Location = new System.Drawing.Point(33, 210);
+            this.txtPassword.BackColor = System.Drawing.Color.White;
+            this.txtPassword.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtPassword.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.txtPassword.Font = new System.Drawing.Font("Inter", 10F);
+            this.txtPassword.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
+            this.txtPassword.Location = new System.Drawing.Point(24, 20);
+            this.txtPassword.Margin = new System.Windows.Forms.Padding(6);
             this.txtPassword.Name = "txtPassword";
-            this.txtPassword.PasswordChar = '*';
-            this.txtPassword.Size = new System.Drawing.Size(310, 27);
-            this.txtPassword.TabIndex = 5;
+            this.txtPassword.PasswordChar = '•';
+            this.txtPassword.Size = new System.Drawing.Size(688, 33);
+            this.txtPassword.TabIndex = 0;
             this.txtPassword.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtPassword_KeyDown);
+            // 
+            // lblErrorBanner
+            // 
+            this.lblErrorBanner.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(254)))), ((int)(((byte)(242)))), ((int)(((byte)(242)))));
+            this.lblErrorBanner.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblErrorBanner.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(239)))), ((int)(((byte)(68)))), ((int)(((byte)(68)))));
+            this.lblErrorBanner.Location = new System.Drawing.Point(72, 644);
+            this.lblErrorBanner.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblErrorBanner.Name = "lblErrorBanner";
+            this.lblErrorBanner.Padding = new System.Windows.Forms.Padding(24, 0, 24, 0);
+            this.lblErrorBanner.Size = new System.Drawing.Size(736, 72);
+            this.lblErrorBanner.TabIndex = 7;
+            this.lblErrorBanner.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblErrorBanner.Visible = false;
+            // 
+            // lnkForgotPassword
+            // 
+            this.lnkForgotPassword.ActiveLinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(64)))), ((int)(((byte)(175)))));
+            this.lnkForgotPassword.AutoSize = true;
+            this.lnkForgotPassword.Font = new System.Drawing.Font("Inter", 9F, System.Drawing.FontStyle.Bold);
+            this.lnkForgotPassword.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
+            this.lnkForgotPassword.LinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
+            this.lnkForgotPassword.Location = new System.Drawing.Point(600, 630);
+            this.lnkForgotPassword.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lnkForgotPassword.Name = "lnkForgotPassword";
+            this.lnkForgotPassword.Size = new System.Drawing.Size(205, 29);
+            this.lnkForgotPassword.TabIndex = 7;
+            this.lnkForgotPassword.TabStop = true;
+            this.lnkForgotPassword.Text = "Quên mật khẩu?";
+            this.lnkForgotPassword.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkForgotPassword_LinkClicked);
             // 
             // btnLogin
             // 
-            this.btnLogin.BackColor = System.Drawing.Color.FromArgb(33, 150, 243);
+            this.btnLogin.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
             this.btnLogin.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.btnLogin.FlatAppearance.BorderSize = 0;
             this.btnLogin.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnLogin.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            this.btnLogin.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
             this.btnLogin.ForeColor = System.Drawing.Color.White;
-            this.btnLogin.Location = new System.Drawing.Point(33, 270);
+            this.btnLogin.Location = new System.Drawing.Point(72, 744);
+            this.btnLogin.Margin = new System.Windows.Forms.Padding(6);
             this.btnLogin.Name = "btnLogin";
-            this.btnLogin.Size = new System.Drawing.Size(310, 40);
-            this.btnLogin.TabIndex = 6;
+            this.btnLogin.Size = new System.Drawing.Size(736, 80);
+            this.btnLogin.TabIndex = 8;
             this.btnLogin.Text = "Đăng nhập";
             this.btnLogin.UseVisualStyleBackColor = false;
             this.btnLogin.Click += new System.EventHandler(this.btnLogin_Click);
             // 
+            // lblFooter
+            // 
+            this.lblFooter.AutoSize = true;
+            this.lblFooter.Font = new System.Drawing.Font("Inter", 9F);
+            this.lblFooter.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(116)))), ((int)(((byte)(139)))));
+            this.lblFooter.Location = new System.Drawing.Point(240, 884);
+            this.lblFooter.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
+            this.lblFooter.Name = "lblFooter";
+            this.lblFooter.Size = new System.Drawing.Size(231, 29);
+            this.lblFooter.TabIndex = 9;
+            this.lblFooter.Text = "Chưa có tài khoản?";
+            // 
             // lnkRegister
             // 
-            this.lnkRegister.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.lnkRegister.Location = new System.Drawing.Point(30, 330);
+            this.lnkRegister.ActiveLinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(64)))), ((int)(((byte)(175)))));
+            this.lnkRegister.AutoSize = true;
+            this.lnkRegister.Font = new System.Drawing.Font("Inter", 10F, System.Drawing.FontStyle.Bold);
+            this.lnkRegister.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
+            this.lnkRegister.LinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(37)))), ((int)(((byte)(99)))), ((int)(((byte)(235)))));
+            this.lnkRegister.Location = new System.Drawing.Point(490, 882);
+            this.lnkRegister.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lnkRegister.Name = "lnkRegister";
-            this.lnkRegister.Size = new System.Drawing.Size(316, 23);
-            this.lnkRegister.TabIndex = 7;
+            this.lnkRegister.Size = new System.Drawing.Size(194, 33);
+            this.lnkRegister.TabIndex = 10;
             this.lnkRegister.TabStop = true;
-            this.lnkRegister.Text = "Chưa có tài khoản? Đăng ký";
-            this.lnkRegister.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.lnkRegister.Text = "Đăng ký ngay";
             this.lnkRegister.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.lnkRegister_LinkClicked);
-            // 
-            // lblError
-            // 
-            this.lblError.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.lblError.ForeColor = System.Drawing.Color.Red;
-            this.lblError.Location = new System.Drawing.Point(30, 360);
-            this.lblError.Name = "lblError";
-            this.lblError.Size = new System.Drawing.Size(316, 30);
-            this.lblError.TabIndex = 8;
-            this.lblError.Text = "";
-            this.lblError.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            this.lblError.Visible = false;
             // 
             // LoginForm
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackColor = System.Drawing.Color.FromArgb(240, 240, 245);
-            this.ClientSize = new System.Drawing.Size(680, 500);
-            this.Controls.Add(this.pnlMain);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
+            this.AcceptButton = this.btnLogin;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(192F, 192F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(248)))), ((int)(((byte)(250)))), ((int)(((byte)(252)))));
+            this.ClientSize = new System.Drawing.Size(1600, 1280);
+            this.Controls.Add(this.pnlCard);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.Margin = new System.Windows.Forms.Padding(6);
+            this.MaximizeBox = true;
             this.Name = "LoginForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "MarkTogether - Đăng nhập";
-            this.pnlMain.ResumeLayout(false);
-            this.pnlMain.PerformLayout();
+            this.Text = "MarkTogether — Đăng nhập";
+            this.pnlCard.ResumeLayout(false);
+            this.pnlCard.PerformLayout();
+            this.pnlUsername.ResumeLayout(false);
+            this.pnlUsername.PerformLayout();
+            this.pnlPassword.ResumeLayout(false);
+            this.pnlPassword.PerformLayout();
             this.ResumeLayout(false);
-        }
 
+        }
         #endregion
 
-        private System.Windows.Forms.Panel pnlMain;
+        private System.Windows.Forms.Panel pnlCard;
+        private System.Windows.Forms.Label lblBrand;
         private System.Windows.Forms.Label lblTitle;
         private System.Windows.Forms.Label lblSubtitle;
         private System.Windows.Forms.Label lblUsername;
+        private System.Windows.Forms.Panel pnlUsername;
         private System.Windows.Forms.TextBox txtUsername;
         private System.Windows.Forms.Label lblPassword;
+        private System.Windows.Forms.Panel pnlPassword;
         private System.Windows.Forms.TextBox txtPassword;
         private System.Windows.Forms.Button btnLogin;
+        private System.Windows.Forms.Label lblErrorBanner;
+        private System.Windows.Forms.LinkLabel lnkForgotPassword;
+        private System.Windows.Forms.Label lblFooter;
         private System.Windows.Forms.LinkLabel lnkRegister;
-        private System.Windows.Forms.Label lblError;
     }
 }

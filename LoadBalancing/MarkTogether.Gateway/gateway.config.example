@@ -1,0 +1,18 @@
+# TCP/TLS listener for client -> LB
+LISTEN_HOST=0.0.0.0
+LISTEN_PORT=5000
+
+# LB TLS cert that client pins (PFX)
+TLS_CERT_PATH=/etc/marktogether/certs/lb.pfx
+TLS_CERT_PASSWORD=CHANGE_ME
+
+# Comma-separated app backends
+BACKENDS=APP1_IP:5000,APP2_IP:5000
+
+# Re-encrypt LB -> backend via TLS
+UPSTREAM_TLS=true
+
+# Health/failover tuning
+HEALTHCHECK_INTERVAL_SECONDS=5
+DOC_REMAP_TIMEOUT_SECONDS=120
+UPSTREAM_CONNECT_TIMEOUT_MS=5000

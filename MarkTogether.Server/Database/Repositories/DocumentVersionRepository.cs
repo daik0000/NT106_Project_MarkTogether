@@ -35,6 +35,42 @@ namespace MarkTogether.Server.Database.Repositories
         }
 
         /// <summary>
+        /// Upsert bản nháp cho từng cặp (document, user).
+        /// Draft dùng label prefix "draft:%" để không cần đổi schema.
+        /// </summary>
+        public static void UpsertDraftVersion(string docId, string content, int savedBy, string label)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE document_versions
+                      SET content_snapshot = @Content, saved_at = NOW(), label = @Label
+                      WHERE doc_id = @DocId AND saved_by = @SavedBy AND label LIKE 'draft:%'",
+                    new
+                    {
+                        DocId = docId,
+                        Content = content,
+                        SavedBy = savedBy,
+                        Label = label
+                    });
+
+                if (affected > 0) return;
+
+                db.Execute(
+                    @"INSERT INTO document_versions (doc_id, content_snapshot, saved_by, label)
+                      VALUES (@DocId, @Content, @SavedBy, @Label)",
+                    new
+                    {
+                        DocId = docId,
+                        Content = content,
+                        SavedBy = savedBy,
+                        Label = label
+                    });
+            }
+        }
+
+        /// <summary>
         /// Lấy danh sách versions của document (JOIN users để lấy tên người lưu).
         /// Hỗ trợ phân trang.
         /// </summary>

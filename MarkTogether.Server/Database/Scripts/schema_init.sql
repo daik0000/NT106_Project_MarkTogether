@@ -1,5 +1,8 @@
 -- =============================================
 -- MarkTogether Database Schema — PostgreSQL
+-- Chạy file này trên PostgreSQL (pgAdmin / psql / DBeaver)
+-- để tạo toàn bộ bảng cho hệ thống.
+-- File idempotent: an toàn chạy lại nhiều lần.
 -- =============================================
 -- HƯỚNG DẪN KHỞI TẠO:
 -- 1. Mở pgAdmin hoặc công cụ quản lý PostgreSQL.
@@ -32,17 +35,27 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- 2. Bảng Documents
 CREATE TABLE IF NOT EXISTS documents (
-    id              VARCHAR(50) PRIMARY KEY DEFAULT 'doc_' || gen_random_uuid()::text,
-    owner_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    share_code      VARCHAR(20) UNIQUE,
-    is_public       BOOLEAN DEFAULT FALSE,
+    id                VARCHAR(50) PRIMARY KEY DEFAULT 'doc_' || gen_random_uuid()::text,
+    owner_id          INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_code        VARCHAR(20) UNIQUE,
+    is_public         BOOLEAN DEFAULT FALSE,
     public_permission VARCHAR(10) DEFAULT 'viewer',
-    title           VARCHAR(500) NOT NULL DEFAULT 'Tài liệu không tiêu đề',
-    content         TEXT DEFAULT '',
-    file_path_server TEXT,
-    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    title             VARCHAR(500) NOT NULL DEFAULT 'Tài liệu không tiêu đề',
+    content           TEXT DEFAULT '',
+    file_path_server  TEXT,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Bổ sung cột cho DB cũ chưa có (idempotent)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS share_code VARCHAR(20);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS public_permission VARCHAR(10) DEFAULT 'viewer';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_share_code
+    ON documents(share_code) WHERE share_code IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_documents_owner_id ON documents(owner_id);
 
 -- Trigger cập nhật updated_at cho documents
 DROP TRIGGER IF EXISTS trg_documents_updated_at ON documents;
@@ -50,9 +63,6 @@ CREATE TRIGGER trg_documents_updated_at
 BEFORE UPDATE ON documents
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
-
--- Index cho owner_id
-CREATE INDEX IF NOT EXISTS idx_documents_owner_id ON documents(owner_id);
 
 -- 3. Bảng Document Shares (quan hệ N-N giữa users và documents)
 CREATE TABLE IF NOT EXISTS document_shares (
@@ -82,6 +92,8 @@ CREATE TABLE IF NOT EXISTS document_operations (
 );
 
 -- Index cho việc query operations theo revision (quan trọng cho OT Engine)
+CREATE INDEX IF NOT EXISTS idx_doc_ops_revision
+    ON document_operations(doc_id, revision);
 CREATE INDEX IF NOT EXISTS idx_doc_ops_doc_revision
     ON document_operations(doc_id, revision);
 
@@ -95,18 +107,49 @@ CREATE TABLE IF NOT EXISTS document_versions (
     label           VARCHAR(200)
 );
 
+CREATE INDEX IF NOT EXISTS idx_doc_versions_doc_time
+    ON document_versions(doc_id, saved_at DESC);
 CREATE INDEX IF NOT EXISTS idx_doc_versions_doc_id ON document_versions(doc_id);
 
--- 6. Bảng Images (ảnh đính kèm tài liệu)
+-- 6. Bảng Images (ảnh user / inline)
 CREATE TABLE IF NOT EXISTS images (
     id              VARCHAR(50) PRIMARY KEY DEFAULT 'img_' || gen_random_uuid()::text,
     user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     file_name       VARCHAR(255) NOT NULL,
-    file_data       BYTEA,                 -- Lưu binary trực tiếp
-    url             TEXT,                   -- Hoặc đường dẫn file trên server
+    file_data       BYTEA,
+    url             TEXT,
     mime_type       VARCHAR(50) DEFAULT 'image/png',
     size            INT,
     uploaded_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_images_user_id ON images(user_id);
+
+-- 7. Bảng Chat Messages (chat realtime trong room)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          BIGSERIAL PRIMARY KEY,
+    doc_id      VARCHAR(50) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id     INT NOT NULL REFERENCES users(id),
+    content     TEXT NOT NULL,
+    sent_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_doc_time
+    ON chat_messages(doc_id, sent_at DESC);
+
+-- 8. Bảng Comments (comment trên đoạn văn bản)
+CREATE TABLE IF NOT EXISTS document_comments (
+    id              VARCHAR(50) PRIMARY KEY DEFAULT 'cmt_' || gen_random_uuid()::text,
+    doc_id          VARCHAR(50) NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id       VARCHAR(50) REFERENCES document_comments(id) ON DELETE CASCADE,
+    anchor_start    INT NOT NULL,
+    anchor_end      INT NOT NULL,
+    anchor_text     TEXT,
+    content         TEXT NOT NULL,
+    resolved        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_doc
+    ON document_comments(doc_id, created_at DESC);

@@ -5,9 +5,6 @@ using System.Linq;
 using Dapper;
 using MarkTogether.Server.Database.Models;
 
-// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE;
-// MIGRATION: ALTER TABLE documents ADD COLUMN IF NOT EXISTS public_permission VARCHAR(10) DEFAULT 'viewer';
-
 namespace MarkTogether.Server.Database.Repositories
 {
     /// <summary>
@@ -15,91 +12,107 @@ namespace MarkTogether.Server.Database.Repositories
     /// </summary>
     public static class DocumentRepository
     {
-        /// <summary>
-        /// Tạo document mới. Trả về ID (doc_xxx) của document vừa tạo.
-        /// </summary>
         public static string Create(Document doc)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 return db.ExecuteScalar<string>(
-                    @"INSERT INTO documents (owner_id, share_code, title, content, file_path_server, is_public, public_permission)
-                      VALUES (@OwnerId, @ShareCode, @Title, @Content, @FilePathServer, @IsPublic, @PublicPermission)
+                    @"INSERT INTO documents (owner_id, title, content, file_path_server, share_code)
+                      VALUES (@OwnerId, @Title, @Content, @FilePathServer, @ShareCode)
                       RETURNING id",
                     new
                     {
                         doc.OwnerId,
-                        doc.ShareCode,
                         doc.Title,
                         doc.Content,
                         doc.FilePathServer,
-                        doc.IsPublic,
-                        doc.PublicPermission
+                        doc.ShareCode
                     });
             }
         }
 
-        /// <summary>
-        /// Lấy chi tiết document theo ID.
-        /// </summary>
         public static Document GetById(string docId)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 return db.QueryFirstOrDefault<Document>(
-                    "SELECT * FROM documents WHERE id = @Id",
+                    "SELECT * FROM documents WHERE id = @Id AND deleted_at IS NULL",
                     new { Id = docId });
             }
         }
 
-        // [ADDED] Lấy document theo ShareCode
         public static Document GetByShareCode(string shareCode)
         {
+            if (string.IsNullOrWhiteSpace(shareCode)) return null;
+
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 return db.QueryFirstOrDefault<Document>(
-                    "SELECT * FROM documents WHERE share_code = @Code",
+                    "SELECT * FROM documents WHERE share_code = @Code AND deleted_at IS NULL",
                     new { Code = shareCode });
             }
         }
 
-        // [ADDED] Cập nhật ShareCode cho document
+        public static bool ShareCodeExists(string shareCode)
+        {
+            if (string.IsNullOrWhiteSpace(shareCode)) return false;
+
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int count = db.ExecuteScalar<int>(
+                    "SELECT COUNT(*) FROM documents WHERE share_code = @Code AND deleted_at IS NULL",
+                    new { Code = shareCode });
+                return count > 0;
+            }
+        }
+
         public static bool UpdateShareCode(string docId, string shareCode)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 int affected = db.Execute(
-                    @"UPDATE documents
-                      SET share_code = @Code, updated_at = NOW()
-                      WHERE id = @Id",
+                    "UPDATE documents SET share_code = @Code WHERE id = @Id AND deleted_at IS NULL",
                     new { Code = shareCode, Id = docId });
                 return affected > 0;
             }
         }
 
-        // [ADDED] Cập nhật chế độ public của document
-        public static bool UpdatePublicSettings(string docId, bool isPublic, string publicPermission)
+        /// <summary>
+        /// Danh sách doc user sở hữu hoặc được share — kèm permission đã resolve.
+        /// </summary>
+        public static List<DocumentWithPermission> GetByUserIdWithPermission(int userId, int page = 1, int limit = 100)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
-                int affected = db.Execute(
-                    @"UPDATE documents
-                      SET is_public = @IsPublic, public_permission = @PublicPermission, updated_at = NOW()
-                      WHERE id = @Id",
-                    new { IsPublic = isPublic, PublicPermission = publicPermission, Id = docId });
-                return affected > 0;
+                int offset = (page - 1) * limit;
+                return db.Query<DocumentWithPermission>(
+                    @"SELECT d.id              AS Id,
+                             d.owner_id        AS OwnerId,
+                              d.title           AS Title,
+                              d.visibility      AS Visibility,
+                              d.public_permission AS PublicPermission,
+                              d.updated_at      AS UpdatedAt,
+                              CASE
+                                 WHEN d.owner_id = @UserId THEN 'owner'
+                                 ELSE COALESCE(ds.permission, 'viewer')
+                             END               AS Permission
+                      FROM documents d
+                       LEFT JOIN document_shares ds
+                              ON d.id = ds.doc_id AND ds.user_id = @UserId
+                       WHERE (d.owner_id = @UserId OR ds.user_id = @UserId)
+                         AND d.deleted_at IS NULL
+                       ORDER BY d.updated_at DESC
+                      LIMIT @Limit OFFSET @Offset",
+                    new { UserId = userId, Limit = limit, Offset = offset }).ToList();
             }
         }
 
-        /// <summary>
-        /// Lấy danh sách documents mà user sở hữu HOẶC được share.
-        /// Hỗ trợ phân trang.
-        /// </summary>
         public static List<Document> GetByUserId(int userId, int page = 1, int limit = 20)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -110,16 +123,14 @@ namespace MarkTogether.Server.Database.Repositories
                     @"SELECT DISTINCT d.*
                       FROM documents d
                       LEFT JOIN document_shares ds ON d.id = ds.doc_id
-                      WHERE d.owner_id = @UserId OR ds.user_id = @UserId
+                      WHERE (d.owner_id = @UserId OR ds.user_id = @UserId)
+                        AND d.deleted_at IS NULL
                       ORDER BY d.updated_at DESC
                       LIMIT @Limit OFFSET @Offset",
                     new { UserId = userId, Limit = limit, Offset = offset }).ToList();
             }
         }
 
-        /// <summary>
-        /// Đếm tổng số documents mà user có quyền truy cập (dùng cho phân trang).
-        /// </summary>
         public static int CountByUserId(int userId)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -127,16 +138,14 @@ namespace MarkTogether.Server.Database.Repositories
                 db.Open();
                 return db.ExecuteScalar<int>(
                     @"SELECT COUNT(DISTINCT d.id)
-                      FROM documents d
-                      LEFT JOIN document_shares ds ON d.id = ds.doc_id
-                      WHERE d.owner_id = @UserId OR ds.user_id = @UserId",
+                       FROM documents d
+                       LEFT JOIN document_shares ds ON d.id = ds.doc_id
+                       WHERE (d.owner_id = @UserId OR ds.user_id = @UserId)
+                         AND d.deleted_at IS NULL",
                     new { UserId = userId });
             }
         }
 
-        /// <summary>
-        /// Cập nhật tiêu đề document.
-        /// </summary>
         public static bool UpdateTitle(string docId, string title)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -145,15 +154,12 @@ namespace MarkTogether.Server.Database.Repositories
                 int affected = db.Execute(
                     @"UPDATE documents
                       SET title = @Title, updated_at = NOW()
-                      WHERE id = @Id",
+                      WHERE id = @Id AND deleted_at IS NULL",
                     new { Title = title, Id = docId });
                 return affected > 0;
             }
         }
 
-        /// <summary>
-        /// Cập nhật nội dung document (content).
-        /// </summary>
         public static bool UpdateContent(string docId, string content)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -162,31 +168,148 @@ namespace MarkTogether.Server.Database.Repositories
                 int affected = db.Execute(
                     @"UPDATE documents
                       SET content = @Content, updated_at = NOW()
-                      WHERE id = @Id",
+                      WHERE id = @Id AND deleted_at IS NULL",
                     new { Content = content, Id = docId });
                 return affected > 0;
             }
         }
 
-        /// <summary>
-        /// Xóa document (cascade sẽ tự động xóa shares, versions, operations).
-        /// </summary>
-        public static bool Delete(string docId)
+        public static bool UpdateVisibility(string docId, string visibility, string publicPermission)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 int affected = db.Execute(
-                    "DELETE FROM documents WHERE id = @Id",
-                    new { Id = docId });
+                    @"UPDATE documents
+                      SET visibility = @Visibility,
+                          public_permission = @PublicPermission,
+                          is_public = CASE WHEN @Visibility = 'public' THEN TRUE ELSE FALSE END,
+                          updated_at = NOW()
+                      WHERE id = @Id AND deleted_at IS NULL",
+                    new
+                    {
+                        Id = docId,
+                        Visibility = visibility,
+                        PublicPermission = publicPermission
+                    });
                 return affected > 0;
             }
         }
 
-        /// <summary>
-        /// Lấy revision hiện tại = MAX(revision) từ document_operations.
-        /// Trả về 0 nếu chưa có operation nào.
-        /// </summary>
+        public static int CountPublicDocuments()
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.ExecuteScalar<int>(
+                    @"SELECT COUNT(*)
+                      FROM documents
+                      WHERE visibility = 'public'
+                        AND deleted_at IS NULL");
+            }
+        }
+
+        public static List<PublicDocumentRow> GetPublicDocuments(int page = 1, int limit = 20)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int safePage = page < 1 ? 1 : page;
+                int safeLimit = limit < 1 ? 20 : (limit > 100 ? 100 : limit);
+                int offset = (safePage - 1) * safeLimit;
+
+                return db.Query<PublicDocumentRow>(
+                    @"SELECT d.id AS Id,
+                             d.title AS Title,
+                             d.owner_id AS OwnerId,
+                             u.username AS OwnerUsername,
+                             d.public_permission AS PublicPermission,
+                             d.updated_at AS UpdatedAt
+                      FROM documents d
+                      INNER JOIN users u ON u.id = d.owner_id
+                      WHERE d.visibility = 'public'
+                        AND d.deleted_at IS NULL
+                      ORDER BY d.updated_at DESC
+                      LIMIT @Limit OFFSET @Offset",
+                    new { Limit = safeLimit, Offset = offset }).ToList();
+            }
+        }
+
+        public static bool Delete(string docId)
+        {
+            return SoftDelete(docId, null);
+        }
+
+        public static bool SoftDelete(string docId, int? deletedBy)
+        {
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                int affected = db.Execute(
+                    @"UPDATE documents
+                      SET deleted_at = NOW(),
+                          deleted_by = @DeletedBy,
+                          updated_at = NOW()
+                      WHERE id = @Id AND deleted_at IS NULL",
+                    new { Id = docId, DeletedBy = deletedBy });
+                return affected > 0;
+            }
+        }
+
+        public static List<DocumentSearchRow> SearchAccessibleDocuments(int userId, string query, string searchBy, int limit = 20)
+        {
+            if (string.IsNullOrWhiteSpace(query)) return new List<DocumentSearchRow>();
+
+            string normalizedSearchBy = (searchBy ?? "all").Trim().ToLowerInvariant();
+            bool searchId = normalizedSearchBy == "id" || normalizedSearchBy == "all";
+            bool searchTitle = normalizedSearchBy == "title" || normalizedSearchBy == "all";
+            string trimmedQuery = query.Trim();
+            string titlePattern = "%" + trimmedQuery + "%";
+
+            using (IDbConnection db = DbConnectionFactory.CreateConnection())
+            {
+                db.Open();
+                return db.Query<DocumentSearchRow>(
+                    @"SELECT d.id AS Id,
+                             d.title AS Title,
+                             u.username AS OwnerUsername,
+                             d.visibility AS Visibility,
+                             d.updated_at AS UpdatedAt,
+                             CASE
+                                WHEN d.owner_id = @UserId THEN 'owner'
+                                WHEN ds.permission IS NOT NULL THEN ds.permission
+                                WHEN d.visibility = 'public' THEN COALESCE(d.public_permission, 'viewer')
+                                ELSE NULL
+                             END AS Permission
+                      FROM documents d
+                      INNER JOIN users u ON u.id = d.owner_id
+                      LEFT JOIN document_shares ds ON ds.doc_id = d.id AND ds.user_id = @UserId
+                      WHERE d.deleted_at IS NULL
+                        AND (
+                            d.owner_id = @UserId
+                            OR ds.user_id = @UserId
+                            OR d.visibility = 'public'
+                        )
+                        AND (
+                            (@SearchId = TRUE AND d.id = @ExactQuery)
+                            OR (@SearchTitle = TRUE AND d.title ILIKE @TitlePattern)
+                        )
+                      ORDER BY
+                        CASE WHEN d.id = @ExactQuery THEN 0 ELSE 1 END,
+                        d.updated_at DESC
+                      LIMIT @Limit",
+                    new
+                    {
+                        UserId = userId,
+                        ExactQuery = trimmedQuery,
+                        TitlePattern = titlePattern,
+                        SearchId = searchId,
+                        SearchTitle = searchTitle,
+                        Limit = limit < 1 ? 20 : (limit > 50 ? 50 : limit)
+                    }).ToList();
+            }
+        }
+
         public static int GetCurrentRevision(string docId)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -200,7 +323,10 @@ namespace MarkTogether.Server.Database.Repositories
             }
         }
 
-        // [OT] Save operation history
+        /// <summary>
+        /// [OT] Lưu một operation đã transform vào bảng document_operations.
+        /// Được gọi bởi DocumentState.TransformAndApply() sau mỗi op được xử lý.
+        /// </summary>
         public static void SaveOperation(DocumentOperation op)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
@@ -223,18 +349,55 @@ namespace MarkTogether.Server.Database.Repositories
             }
         }
 
-        // [OT] Get operations since a revision
+        /// <summary>
+        /// [OT] Lấy các operations có revision > fromRevision theo thứ tự tăng dần.
+        /// Dùng để tìm các concurrent ops mà client chưa biết, phục vụ transform.
+        /// </summary>
         public static List<DocumentOperation> GetOpsSince(string docId, int fromRevision)
         {
             using (IDbConnection db = DbConnectionFactory.CreateConnection())
             {
                 db.Open();
                 return db.Query<DocumentOperation>(
-                    @"SELECT * FROM document_operations 
+                    @"SELECT * FROM document_operations
                       WHERE doc_id = @DocId AND revision > @FromRevision
                       ORDER BY revision ASC",
                     new { DocId = docId, FromRevision = fromRevision }).ToList();
             }
         }
+    }
+
+    /// <summary>
+    /// DTO trả về từ join documents + document_shares cho danh sách hiển thị HomeForm.
+    /// </summary>
+    public class DocumentWithPermission
+    {
+        public string Id { get; set; }
+        public int OwnerId { get; set; }
+        public string Title { get; set; }
+        public string Visibility { get; set; }
+        public string PublicPermission { get; set; }
+        public System.DateTime UpdatedAt { get; set; }
+        public string Permission { get; set; }
+    }
+
+    public class PublicDocumentRow
+    {
+        public string Id { get; set; }
+        public string Title { get; set; }
+        public int OwnerId { get; set; }
+        public string OwnerUsername { get; set; }
+        public string PublicPermission { get; set; }
+        public System.DateTime UpdatedAt { get; set; }
+    }
+
+    public class DocumentSearchRow
+    {
+        public string Id { get; set; }
+        public string Title { get; set; }
+        public string OwnerUsername { get; set; }
+        public string Visibility { get; set; }
+        public System.DateTime UpdatedAt { get; set; }
+        public string Permission { get; set; }
     }
 }
