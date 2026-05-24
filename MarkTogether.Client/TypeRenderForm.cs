@@ -742,8 +742,28 @@ namespace MarkTogether.Client
         // ═══════════════════════════════════════════════════════════
         private void HandleOpBroadcast(Payload_OP_BROADCAST p)
         {
-            if (p == null || p.docID != _docId || p.userID == SocketClient.Instance.UserId) return;
-            if (IsDisposed || !IsHandleCreated) return;
+            if (p == null)
+            {
+                Logger.Log("[OT] Broadcast ignored: payload=null");
+                return;
+            }
+            if (p.docID != _docId)
+            {
+                Logger.Log($"[OT] Broadcast ignored: doc mismatch payloadDoc={p.docID} currentDoc={_docId}");
+                return;
+            }
+            if (p.userID == SocketClient.Instance.UserId)
+            {
+                Logger.Log($"[OT] Broadcast ignored: self user={p.userID}");
+                return;
+            }
+            if (IsDisposed || !IsHandleCreated)
+            {
+                Logger.Log("[OT] Broadcast ignored: editor disposed/not ready");
+                return;
+            }
+
+            Logger.Log($"[OT] Broadcast received: doc={p.docID} user={p.userID} type={p.opType} ops={p.ops?.Count ?? 0}");
 
             BeginInvoke((Action)(() =>
             {
@@ -777,8 +797,12 @@ namespace MarkTogether.Client
                     txtRawMarkdown.Text = current;
                     txtRawMarkdown.SelectionStart = Math.Max(0, Math.Min(caret, current.Length));
                     _lastMarkdownText = current;
+                    Logger.Log($"[OT] Broadcast applied: doc={p.docID} type={p.opType} ops={p.ops?.Count ?? 0}");
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Logger.Log($"[OT] Broadcast apply failed: {ex.GetType().Name}: {ex.Message}");
+                }
                 finally
                 {
                     _suppressOpTracking = false;

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using MarkTogether.Client.Network;
 using MarkTogether.Client.UI;
@@ -64,7 +65,7 @@ namespace MarkTogether.Client
             lblErrorBanner.Visible = false;
         }
 
-        private void btnLogin_Click(object sender, EventArgs e)
+        private async void btnLogin_Click(object sender, EventArgs e)
         {
             string username = txtUsername.Text.Trim();
             string password = txtPassword.Text;
@@ -81,8 +82,14 @@ namespace MarkTogether.Client
                 btnLogin.Text = "Đang đăng nhập...";
                 ClearError();
 
-                SocketClient.Instance.ConnectFromConfig();
-                Payload_AUTH_RESPONSE result = SocketClient.Instance.Login(username, password);
+                Payload_AUTH_RESPONSE result = await Task.Run(() =>
+                {
+                    // Login should start from a clean socket; stale TLS streams after a
+                    // timeout can make later requests wait until their own timeout.
+                    try { SocketClient.Instance.Disconnect(); } catch { }
+                    SocketClient.Instance.ConnectFromConfig();
+                    return SocketClient.Instance.Login(username, password);
+                });
 
                 if (result.Success)
                 {
@@ -103,6 +110,7 @@ namespace MarkTogether.Client
             }
             catch (Exception ex)
             {
+                try { SocketClient.Instance.Disconnect(); } catch { }
                 ShowError("Không thể kết nối đến server. " + ex.Message);
             }
             finally

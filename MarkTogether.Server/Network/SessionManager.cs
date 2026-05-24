@@ -54,6 +54,7 @@ namespace MarkTogether.Server.Network
                     _docRooms[docId] = set;
                 }
                 set.Add(handler);
+                Console.WriteLine($"[SessionManager] JoinRoom doc={docId} clients={set.Count}");
             }
         }
 
@@ -66,6 +67,7 @@ namespace MarkTogether.Server.Network
                 if (_docRooms.TryGetValue(docId, out var set))
                 {
                     set.Remove(handler);
+                    Console.WriteLine($"[SessionManager] LeaveRoom doc={docId} clients={set.Count}");
                     if (set.Count == 0)
                     {
                         _docRooms.TryRemove(docId, out _);
@@ -117,9 +119,15 @@ namespace MarkTogether.Server.Network
             List<ClientHandler> targets;
             lock (_roomsLock)
             {
-                if (!_docRooms.TryGetValue(docId, out var set)) return;
+                if (!_docRooms.TryGetValue(docId, out var set))
+                {
+                    Console.WriteLine($"[SessionManager] Broadcast skipped doc={docId} room=missing type={packet.Type}");
+                    return;
+                }
                 targets = set.Where(h => h != exclude).ToList();
             }
+
+            Console.WriteLine($"[SessionManager] Broadcast doc={docId} type={packet.Type} targets={targets.Count}");
 
             foreach (var handler in targets)
             {

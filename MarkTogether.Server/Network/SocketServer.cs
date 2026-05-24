@@ -50,26 +50,36 @@ namespace MarkTogether.Server.Network
                     string clientIp = ((IPEndPoint)tcpClient.Client.RemoteEndPoint).Address.ToString();
                     Console.WriteLine($"[Server] Client mới kết nối: {clientIp}");
 
-                    // Tạo handler riêng cho client này, xử lý song song
-                    var handler = new ClientHandler(tcpClient, _serverCert);
-                    
-                    // [ADDED] Register handler
-                    lock (_handlersLock)
-                    {
-                        _activeHandlers.Add(handler);
-                    }
-
+                    // TLS handshake runs inside the client task so one slow/non-TLS
+                    // connection cannot block the accept loop for every other client.
                     _ = Task.Run(() => {
+                        ClientHandler handler = null;
                         try
                         {
+                            handler = new ClientHandler(tcpClient, _serverCert, clientIp);
+
+                            // [ADDED] Register handler
+                            lock (_handlersLock)
+                            {
+                                _activeHandlers.Add(handler);
+                            }
+
                             handler.ProcessAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Server] Loi xu ly client {clientIp}: {ex.Message}");
+                            try { tcpClient.Close(); } catch { }
                         }
                         finally
                         {
                             // [ADDED] Unregister handler when done
-                            lock (_handlersLock)
+                            if (handler != null)
                             {
-                                _activeHandlers.Remove(handler);
+                                lock (_handlersLock)
+                                {
+                                    _activeHandlers.Remove(handler);
+                                }
                             }
                         }
                     });

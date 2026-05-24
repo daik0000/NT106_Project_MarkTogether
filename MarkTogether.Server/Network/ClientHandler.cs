@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using MarkTogether.Server.Database.Models;
 using MarkTogether.Server.Database.Repositories;
@@ -22,9 +23,12 @@ namespace MarkTogether.Server.Network
     /// </summary>
     public class ClientHandler
     {
+        private const int TlsHandshakeTimeoutMs = 10000;
+
         private readonly TcpClient _tcpClient;
         private readonly Stream _stream;
         private readonly X509Certificate2 _serverCert;
+        private readonly string _remoteAddress;
         private string _token;
         private int _userId = -1;
         private string _username;
@@ -36,17 +40,38 @@ namespace MarkTogether.Server.Network
         public string Username => _username;
         public string Token => _token;
 
-        public ClientHandler(TcpClient tcpClient, X509Certificate2 serverCert)
+        public ClientHandler(TcpClient tcpClient, X509Certificate2 serverCert, string remoteAddress = null)
         {
             _tcpClient = tcpClient;
             _serverCert = serverCert;
+            _remoteAddress = string.IsNullOrWhiteSpace(remoteAddress) ? "unknown" : remoteAddress;
 
+            _tcpClient.ReceiveTimeout = TlsHandshakeTimeoutMs;
+            _tcpClient.SendTimeout = TlsHandshakeTimeoutMs;
             var ssl = new SslStream(tcpClient.GetStream(), false);
-            ssl.AuthenticateAsServer(
-                _serverCert,
-                false,
-                SslProtocols.Tls12,
-                false);
+
+            ssl.ReadTimeout = TlsHandshakeTimeoutMs;
+            ssl.WriteTimeout = TlsHandshakeTimeoutMs;
+
+            Console.WriteLine($"[Handler] TLS handshake start: {_remoteAddress}");
+            using (var timeout = new Timer(_ =>
+            {
+                try { tcpClient.Close(); } catch { }
+            }, null, TlsHandshakeTimeoutMs, Timeout.Infinite))
+            {
+                ssl.AuthenticateAsServer(
+                    _serverCert,
+                    false,
+                    SslProtocols.Tls12,
+                    false);
+                timeout.Change(Timeout.Infinite, Timeout.Infinite);
+            }
+
+            _tcpClient.ReceiveTimeout = 0;
+            _tcpClient.SendTimeout = 0;
+            ssl.ReadTimeout = Timeout.Infinite;
+            ssl.WriteTimeout = Timeout.Infinite;
+            Console.WriteLine($"[Handler] TLS handshake established: {_remoteAddress}");
 
             _stream = ssl;
         }

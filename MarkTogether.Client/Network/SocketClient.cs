@@ -26,6 +26,7 @@ namespace MarkTogether.Client.Network
         private Thread _receiveThread;
         private volatile bool _stopReceive;
         private ServerEndpointConfig _endpointConfig;
+        private static readonly object _debugLogLock = new object();
 
         private readonly ConcurrentDictionary<string, TaskCompletionSource<Packet>> _pending
             = new ConcurrentDictionary<string, TaskCompletionSource<Packet>>();
@@ -50,16 +51,24 @@ namespace MarkTogether.Client.Network
         // ═══════════════════════════════════════════════════════════
         public void Connect(string host = "localhost", int port = 5000)
         {
+            DebugLog($"Connect requested host={host} port={port} connected={_connected}");
+
             // Nếu đã đánh dấu connected nhưng socket thực sự đã chết → dọn dẹp trước
             if (_connected && !IsSocketAlive())
             {
+                DebugLog("Existing socket is not alive; disconnecting before reconnect.");
                 try { Disconnect(); } catch { }
             }
 
-            if (_connected) return;
+            if (_connected)
+            {
+                DebugLog("Connect skipped because socket is already marked connected.");
+                return;
+            }
 
             _tcp = new TcpClient();
             _tcp.Connect(host, port);
+            DebugLog("TCP connected.");
 
             var ssl = new SslStream(
                 _tcp.GetStream(),
@@ -67,6 +76,7 @@ namespace MarkTogether.Client.Network
                 ValidateServerCertificate);
 
             ssl.AuthenticateAsClient(host, null, SslProtocols.Tls12, false);
+            DebugLog("TLS authenticated.");
             _stream = ssl;
             _connected = true;
             _stopReceive = false;
@@ -77,6 +87,7 @@ namespace MarkTogether.Client.Network
                 Name = "MarkTogether-ReceiveLoop"
             };
             _receiveThread.Start();
+            DebugLog("Receive loop started.");
         }
 
         public void ConnectFromConfig()
@@ -130,6 +141,7 @@ namespace MarkTogether.Client.Network
 
         public void Disconnect()
         {
+            DebugLog("Disconnect requested.");
             _stopReceive = true;
             _connected = false;
             Token = null;
@@ -158,11 +170,13 @@ namespace MarkTogether.Client.Network
                 while (!_stopReceive && _connected)
                 {
                     Packet packet = PacketHelper.Receive(_stream);
+                    DebugLog($"Received packet type={packet?.Type} requestId={packet?.RequestId}");
                     Dispatch(packet);
                 }
             }
             catch (Exception ex) when (!_stopReceive)
             {
+                DebugLog("ReceiveLoop error: " + ex.GetType().Name + ": " + ex.Message);
                 OnConnectionLost?.Invoke(ex);
                 _connected = false;
 
@@ -231,11 +245,14 @@ namespace MarkTogether.Client.Network
 
             try
             {
+                DebugLog($"Sending packet type={type} requestId={packet.RequestId}");
                 PacketHelper.Send(_stream, packet);
+                DebugLog($"Sent packet type={type} requestId={packet.RequestId}");
             }
             catch
             {
                 _pending.TryRemove(packet.RequestId, out _);
+                DebugLog($"Send failed type={type} requestId={packet.RequestId}");
                 throw;
             }
 
@@ -247,11 +264,14 @@ namespace MarkTogether.Client.Network
                 if (completed != tcs.Task)
                 {
                     _pending.TryRemove(packet.RequestId, out _);
+                    DebugLog($"Request timeout type={type} requestId={packet.RequestId} timeoutMs={timeoutMs}");
                     throw new TimeoutException($"Server không phản hồi trong {timeoutMs}ms ({type}).");
                 }
 
                 cts.Cancel();
-                return await tcs.Task.ConfigureAwait(false);
+                Packet response = await tcs.Task.ConfigureAwait(false);
+                DebugLog($"Request completed type={type} requestId={packet.RequestId} responseType={response?.Type}");
+                return response;
             }
         }
 
@@ -259,6 +279,22 @@ namespace MarkTogether.Client.Network
         {
             if (!_connected)
                 throw new InvalidOperationException("Chưa kết nối tới server.");
+        }
+
+        private static void DebugLog(string message)
+        {
+            try
+            {
+                string path = Path.Combine(Path.GetTempPath(), "MarkTogetherClient.log");
+                lock (_debugLogLock)
+                {
+                    File.AppendAllText(path, $"[{DateTime.UtcNow:O}] {message}{Environment.NewLine}");
+                }
+            }
+            catch
+            {
+                // Debug logging must never affect client behavior.
+            }
         }
 
         private void EnsureAuthenticated()
