@@ -157,5 +157,9 @@ namespace MarkTogether.Client
             }
         }
 
+        private void pnlCard_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
     }
 }

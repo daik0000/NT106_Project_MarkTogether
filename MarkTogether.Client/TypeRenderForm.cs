@@ -263,7 +263,11 @@ namespace MarkTogether.Client
 
             // Doc title
             if (!string.IsNullOrWhiteSpace(_docTitle))
-                lblDocTitle.Text = _docTitle;
+            {
+                lblDocTitle.Text = _docTitle.Length > 20
+                    ? _docTitle.Substring(0, 20) + "..."
+                    : _docTitle;
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
