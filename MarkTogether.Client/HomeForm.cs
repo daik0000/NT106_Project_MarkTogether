@@ -509,7 +509,7 @@ namespace MarkTogether.Client
         {
             if (listDocuments.ClientSize.Width <= 0 || listDocuments.Columns.Count < 3) return;
 
-            int width = Math.Max(640, listDocuments.ClientSize.Width - 8);
+            int width = Math.Max(640, listDocuments.ClientSize.Width);
             int permissionWidth = 180;
             int updatedWidth = 260;
             int titleWidth = Math.Max(260, width - updatedWidth - permissionWidth);
@@ -518,5 +518,6 @@ namespace MarkTogether.Client
             colUpdatedAt.Width = updatedWidth;
             colPermission.Width = permissionWidth;
         }
+
     }
 }
