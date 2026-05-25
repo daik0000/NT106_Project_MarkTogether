@@ -15,7 +15,6 @@ namespace MarkTogether.Server.OT
                 timestamp = op1.timestamp
             };
 
-            // Rule: If op2.pos <= op1.pos → op1.pos += op2.text.Length
             if (op2.pos <= op1.pos)
             {
                 result.pos += op2.text.Length;
@@ -33,9 +32,6 @@ namespace MarkTogether.Server.OT
                 timestamp = op1.timestamp
             };
 
-            // Rule:
-            // Nếu delete xảy ra hoàn toàn trước op1.pos (op2.pos + deleteLength <= op1.pos) → op1.pos -= deleteLength
-            // Nếu delete overlap với op1.pos (op2.pos < op1.pos) → op1.pos = op2.pos
             if (op2.pos + deleteLength <= op1.pos)
             {
                 result.pos -= deleteLength;
@@ -53,14 +49,25 @@ namespace MarkTogether.Server.OT
             var result = new EditOpItem
             {
                 pos = op1.pos,
-                text = op1.text, 
+                text = op1.text,
                 timestamp = op1.timestamp
             };
 
-            // Rule: Nếu op2.pos <= op1.pos → op1.pos += op2.text.Length
+            int insertLen = op2.text?.Length ?? 0;
+            if (insertLen == 0) return result;
+
             if (op2.pos <= op1.pos)
             {
-                result.pos += op2.text.Length;
+                result.pos += insertLen;
+            }
+            else if (op2.pos < op1.pos + deleteLength)
+            {
+                if (!string.IsNullOrEmpty(result.text))
+                {
+                    int cutAt = op2.pos - op1.pos;
+                    if (cutAt < result.text.Length)
+                        result.text = result.text.Substring(0, cutAt);
+                }
             }
 
             return result;
@@ -75,12 +82,10 @@ namespace MarkTogether.Server.OT
                 timestamp = op1.timestamp
             };
 
-            // [BUG 1 FIX] Proper overlap calculation for Delete vs Delete
-            // 1. Adjust position: subtract characters from op2 that were BEFORE op1
+            // [BUG 1 FIX] Proper overlap calculation for Delete vs Delete.
             int charsBefore = Math.Min(deleteLength2, Math.Max(0, op1.pos - op2.pos));
             result.pos = op1.pos - charsBefore;
 
-            // 2. Adjust text: remove characters from op1.text that overlap with op2's range
             if (string.IsNullOrEmpty(op1.text))
             {
                 return result;

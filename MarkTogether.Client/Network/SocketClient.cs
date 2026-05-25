@@ -461,24 +461,32 @@ namespace MarkTogether.Client.Network
         }
 
         // ─── Real-time ops ───
-        public void SendInsertOps(string docId, int clientRevision, List<EditOpItem> ops)
+        public int SendInsertOps(string docId, int clientRevision, List<EditOpItem> ops)
         {
             EnsureAuthenticated();
             var response = Request(MessageType.OP_INSERT,
                 new Payload_OP_INSERT
                 { docID = docId, clientResivion = clientRevision, ops = ops ?? new List<EditOpItem>() },
-                timeoutMs: 5000);
-            EnsureOkResponse(response, MessageType.OP_INSERT);
+                timeoutMs: 15000);
+            return ExtractOkRevision(response, MessageType.OP_INSERT);
         }
 
-        public void SendDeleteOps(string docId, int clientRevision, List<EditOpItem> ops)
+        public int SendDeleteOps(string docId, int clientRevision, List<EditOpItem> ops)
         {
             EnsureAuthenticated();
             var response = Request(MessageType.OP_DELETE,
                 new Payload_OP_DELETE
                 { docID = docId, clientResivion = clientRevision, ops = ops ?? new List<EditOpItem>() },
-                timeoutMs: 5000);
-            EnsureOkResponse(response, MessageType.OP_DELETE);
+                timeoutMs: 15000);
+            return ExtractOkRevision(response, MessageType.OP_DELETE);
+        }
+
+        private static int ExtractOkRevision(Packet response, MessageType origin)
+        {
+            EnsureOkResponse(response, origin);
+            var ok = response.GetPayload<Payload_OK>();
+            int revision;
+            return int.TryParse(ok?.Message, out revision) ? revision : -1;
         }
 
         private static void EnsureOkResponse(Packet response, MessageType origin)

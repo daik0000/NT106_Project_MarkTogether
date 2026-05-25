@@ -375,6 +375,9 @@ namespace MarkTogether.Server.Network
 
             SessionManager.JoinRoom(docId, this);
 
+            // Prewarm OT state so the first edit does not pay the initialization round-trip.
+            DocumentStateManager.GetOrCreate(docId);
+
             Reply(packet, MessageType.DOC_OPEN, new Payload_DOC_OPEN_Response
             {
                 docID = document.Id,
@@ -1137,26 +1140,37 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
+            const int BulkMaxCharsPerPacket = 8192;
+            const int MaxOpsPerPacket = 64;
+
             int charCount = (ops ?? new List<EditOpItem>()).Sum(op => op?.text?.Length ?? 0);
-            if (charCount > 5)
+            if (charCount > BulkMaxCharsPerPacket)
             {
-                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa 5 ký tự.");
+                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa {BulkMaxCharsPerPacket} ký tự.");
                 return;
             }
 
             // [OT] Lấy/tạo state cho document này
+            if ((ops?.Count ?? 0) > MaxOpsPerPacket)
+            {
+                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa {MaxOpsPerPacket} op.");
+                return;
+            }
+
             var state = DocumentStateManager.GetOrCreate(docId);
 
+            int currentClientRev = clientRevision;
             var transformedOps = new List<EditOpItem>();
             foreach (var op in ops ?? new List<EditOpItem>())
             {
                 Console.WriteLine($"[OT] {opType.ToUpper()} user={currentUserId} " +
-                    $"clientRev={clientRevision} serverRev={state.ServerRevision} " +
+                    $"clientRev={currentClientRev} serverRev={state.ServerRevision} " +
                     $"pos={op.pos} text='{op.text?.Replace("\n", "\\n").Replace("\r", "\\r")}'" );
 
                 // [OT] Transform op against concurrent server ops, persist vào DB
-                var transformedOp = state.TransformAndApply(op, opType, clientRevision, currentUserId);
+                var transformedOp = state.TransformAndApply(op, opType, currentClientRev, currentUserId);
                 transformedOps.Add(transformedOp);
+                currentClientRev = state.ServerRevision;
 
                 Console.WriteLine($"[OT] {opType.ToUpper()} transformed pos={transformedOp.pos} " +
                     $"newServerRev={state.ServerRevision}");
@@ -1165,8 +1179,8 @@ namespace MarkTogether.Server.Network
             // Gửi ACK về cho client kèm serverRevision mới nhất
             Reply(packet, MessageType.OK, new Payload_OK { Message = state.ServerRevision.ToString() });
 
-            // Broadcast từng op đã transform cho các client khác trong room
-            foreach (var tOp in transformedOps)
+            // Broadcast cả batch đã transform để client apply một lần.
+            if (transformedOps.Count > 0)
             {
                 var broadcast = new Payload_OP_BROADCAST
                 {
@@ -1175,7 +1189,7 @@ namespace MarkTogether.Server.Network
                     userID = currentUserId,
                     username = _username,
                     opType = opType,
-                    ops = new List<EditOpItem> { tOp }
+                    ops = transformedOps
                 };
                 SessionManager.BroadcastToRoom(docId, Packet.Create(MessageType.OP_BROADCAST, broadcast), exclude: this);
             }

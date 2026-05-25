@@ -226,6 +226,7 @@ Vai trò chính:
 - **TLS re-encrypt upstream:** LB mở kết nối TLS tới từng app server khi `MARKTOGETHER_LB_UPSTREAM_TLS=true`.
 - **Route request không thuộc document:** login/logout/forgot/list... chọn backend theo least-connections.
 - **Route request có `docID`:** `DOC_OPEN`, `OP_INSERT`, `OP_DELETE`, chat/comment/version/image theo cùng `docID` được giữ cùng một backend để `SessionManager` broadcast realtime trong memory vẫn hoạt động.
+- **Giới hạn active document:** mỗi TCP connection qua Gateway chỉ giữ 1 document active. Client phải đóng editor hiện tại để gửi `DOC_LEAVE` trước khi mở document khác; nếu không Gateway trả lỗi `"Một connection chỉ hỗ trợ 1 tài liệu đang active. Hãy DOC_LEAVE trước."`
 - **Redis shared session:** token login được lưu ở Redis qua `MARKTOGETHER_REDIS_CONNECTION`, nên request auth-sensitive vẫn hợp lệ nếu đi qua backend khác.
 - **Health/failover:** backend bị lỗi connect/TLS sẽ bị đánh dấu unhealthy; document đang active chỉ remap sau `MARKTOGETHER_LB_DOC_REMAP_TIMEOUT_SECONDS` để tránh tách room OT giữa chừng.
 
@@ -759,6 +760,7 @@ Firewall production:
 
 - **Luồng list:** `DOC_LIST` → `DocumentRepository.GetByUserIdWithPermission` (LEFT JOIN `document_shares`) → trả `DocInfo[]`.
 - **Luồng open:** `DOC_OPEN { docID }` → server check permission → `SessionManager.JoinRoom(docId, this)` → reply `DOC_OPEN_Response`.
+- **Luồng leave:** khi đóng `TypeRenderForm`, client gọi `DOC_LEAVE { docID }` để rời room realtime. Với Gateway LB, cần `DOC_LEAVE` xong mới mở document khác trên cùng connection.
 - **Test:** ở `HomeForm`, đổi sort `Mới nhất / Cũ nhất / A→Z / Z→A`. Double-click 1 row.
 - **Kết quả:** danh sách sort đúng; mở doc thấy đúng content.
 
@@ -786,10 +788,20 @@ Firewall production:
 
 ### 7.9. Realtime collaboration — Operational Transformation
 
+- **Cập nhật OT đợt 2 (26/05/2026):**
+  - Pipeline editor hiện là `TextChanged -> typing debounce -> ClassifyEditCase -> {Typing|BulkInsert|BulkDelete|ReplaceBlock}`.
+  - `TypingMaxCharsPerPacket = 32` chỉ dùng cho typing nhỏ; `BulkMaxCharsPerPacket = 8192` dùng cho paste/delete/replace block; `TypingDebounceMs = 120`.
+  - Gõ tiếng Việt qua Unikey/EVKey được gom bằng debounce thay vì dựa vào WM_IME composition event, vì các bộ gõ này thường phát chuỗi `WM_CHAR` + backspace trung gian.
+  - Paste dài và xóa đoạn dài không còn chia 32 ký tự/gói; replace block gửi delete block rồi insert block, mỗi phần chỉ chunk tiếp khi vượt 8192 ký tự.
+  - Remote apply dùng `SelectedText` theo batch broadcast và chỉ sync `_lastMarkdownText` một lần cuối để giảm số lần clone toàn bộ TextBox.
+  - Khi apply remote op, client lưu `EM_GETFIRSTVISIBLELINE` trước khi đổi `SelectionStart` và restore bằng `EM_LINESCROLL` sau khi apply, tránh user đang đọc/gõ phía trên bị kéo xuống vị trí edit của user khác.
+
 - **Luồng client → server:**
-  1. `txtRawMarkdown_TextChanged` → `TrackRealtimeEditOps` → `ComputeTextDelta` → `QueueOperation`.
-  2. Pending buffer gom ≤ 5 ký tự cùng loại (Insert / Delete). Đổi loại → flush ngay. Idle 250 ms → flush phần còn lại.
-  3. Chunk được **enqueue vào `_pasteChunkQueue`** (không gửi trực tiếp trên UI thread). Background task `_pasteSendTask` gửi tuần tự `OP_INSERT`/`OP_DELETE` kèm `clientRevision` và chờ ACK trước khi tăng revision.
+  1. `HomeForm` truyền `permission` từ `DOC_OPEN` / `DOC_JOIN_CODE` / tạo doc vào `TypeRenderForm`, để editor biết ngay `owner/editor/viewer` trước khi người dùng gõ.
+  2. `txtRawMarkdown_TextChanged` → `TrackRealtimeEditOps` → `ComputeTextDelta` → `QueueOperation`.
+  3. Client chỉ enqueue op khi `_trackRealtimeOps=true`, đã login, có `docID`, và permission là `owner` hoặc `editor`; nếu bị skip sẽ ghi log `[OT] Pending chunk skipped: ...`.
+  4. Pending buffer gom ≤ 32 ký tự cùng loại (Insert / Delete). Đổi loại → flush ngay. Idle 250 ms → flush phần còn lại.
+  5. Chunk được **enqueue vào `_pasteChunkQueue`** (không gửi trực tiếp trên UI thread). Background task `_pasteSendTask` gửi tuần tự `OP_INSERT`/`OP_DELETE` kèm `clientRevision` và chờ ACK trước khi tăng revision.
 - **Server (`ProcessRealtimeOp`):**
   1. RBAC `CanEdit`.
   2. Lấy `DocumentState` (cached trong `DocumentStateManager`).
@@ -801,7 +813,9 @@ Firewall production:
   4. Reply `OK { Message = serverRevision }`.
   5. `BroadcastToRoom` `OP_BROADCAST` (loại trừ chính sender).
 - **Client B (`HandleOpBroadcast`):**
-  - `BeginInvoke` → `_suppressOpTracking=true`, áp op vào `txtRawMarkdown.Text`, giữ caret hợp lý, `_lastMarkdownText = current`.
+  - `BeginInvoke` → flush pending ops trước khi áp broadcast, `_suppressOpTracking=true`, áp op vào `txtRawMarkdown.Text`, giữ caret hợp lý, `_lastMarkdownText = current`.
+  - Lưu và restore first visible line của TextBox khi apply bằng `SelectedText`, nên remote edit ở dưới không làm viewport của user đang ở trên bị kéo xuống.
+  - Cập nhật `_clientRevision = max(_clientRevision, broadcast.clientResivion)` để tránh double-transform ở lần gửi op kế tiếp.
 - **File liên quan:** `TypeRenderForm.cs`, `SocketClient.SendInsertOps/SendDeleteOps`, `ClientHandler.ProcessRealtimeOp`, `OT/DocumentState.cs`, `OT/OTEngine.cs`.
 - **Cách test (2 client):**
   1. Mở Client A & B, share-code rồi join, cùng vào doc.
@@ -813,14 +827,15 @@ Firewall production:
 - **Lỗi thường gặp & fix:**
   - **Caret nhảy:** kiểm tra `_suppressOpTracking` đã `true` khi apply broadcast; xem `HandleOpBroadcast`.
   - **Server log RBAC denied** dù là editor: kiểm tra `document_shares.permission` (vd. lỗi typo).
-  - **OP > 5 ký tự bị reject:** thuật toán client tự gom ≤ 5; nếu gửi tay (debug) phải tách trước.
+  - **LB không thấy `OP_INSERT` khi gõ:** kiểm `%TEMP%\MarkTogetherClient.log` hoặc file `client_debug_<PID>.log`, tìm `[OT] Pending chunk skipped` để biết client đang thiếu quyền, chưa login, hoặc thiếu state.
+  - **OP > 8192 ký tự bị reject:** bulk path tự tách theo `BulkMaxCharsPerPacket`; nếu gửi tay (debug) phải tách trước.
 
 #### 7.8.1. Async op sender — toàn bộ typing và paste không block UI thread
 
-- **Vấn đề gốc:** `SendCurrentPendingChunk` gọi `SocketClient.SendInsertOps/SendDeleteOps` đồng bộ trên UI thread. Với giới hạn `≤ 5` ký tự/packet, gõ 5 ký tự → 1 round-trip TCP block UI. Trên VPS (RTT 50–200 ms) → typing giật rõ rệt; paste 5000 ký tự → `Not Responding`.
+- **Vấn đề gốc:** `SendCurrentPendingChunk` gọi `SocketClient.SendInsertOps/SendDeleteOps` đồng bộ trên UI thread. Giới hạn hiện tại là `≤ 32` ký tự/packet; gõ nhanh hoặc paste dài được gom chunk lớn hơn để giảm số round-trip.
 - **Kiến trúc hiện tại:** mọi op (typing + paste) đều đi qua **background op sender** duy nhất (`_pasteSendTask`), không có gì gửi đồng bộ trên UI thread.
   - **Typing:** `SendCurrentPendingChunk` enqueue vào `_pasteChunkQueue` rồi `EnsurePasteSenderRunning` — UI thread return ngay.
-  - **Paste dài (`>= 20` ký tự):** `ProcessCmdKey` intercept → `PerformFastPaste` → insert text ngay lên TextBox (UI responsive) → `EnqueuePasteOperations` → sender gửi nền.
+  - **Paste dài (`>= 20` ký tự):** `ProcessCmdKey` intercept → `PerformFastPaste` → insert text ngay lên TextBox (UI responsive) → `EnqueueBulkOp` → sender gửi nền.
   - **Paste ngắn (`< 20` ký tự):** đi theo đường TextBox mặc định → `txtRawMarkdown_TextChanged` → typing path → cũng enqueue như typing thường.
 - **Background sender (`PasteSenderLoop`):**
   - Chạy dưới `Task.Run`, xử lý tuần tự từng entry trong `_pasteChunkQueue`.
@@ -828,10 +843,9 @@ Firewall production:
   - Tăng `_clientRevision` bằng `Interlocked.Increment` sau mỗi ACK.
   - Khi queue rỗng: task tự exit, `_isPasting = false`.
 - **Ràng buộc giữ nguyên:**
-  - Không sửa `SocketClient.cs`.
-  - Không sửa `ClientHandler.cs`.
-  - Không tăng giới hạn server `5` ký tự/packet.
-- **Đồng bộ revision:** sender xử lý tuần tự → thứ tự enqueue = thứ tự gửi → `_clientRevision` tăng đơn điệu → OT đúng.
+  - `SocketClient.SendInsertOps/SendDeleteOps` dùng timeout 15000 ms cho packet bulk.
+  - Server và client cùng dùng giới hạn `8192` ký tự/packet cho bulk; typing nhỏ vẫn giữ `32`.
+- **Đồng bộ revision:** sender xử lý tuần tự → thứ tự enqueue = thứ tự gửi → `_clientRevision` tăng đơn điệu. Khi nhận `OP_BROADCAST`, client đồng bộ revision theo server để tránh transform lại op đã áp.
 - **Unicode/emoji:** `SafeChunkLength(...)` tránh cắt đôi surrogate pair khi chunk text.
 - **Paste qua chuột phải:** `txtRawMarkdown.ContextMenu = new ContextMenu();` tắt context menu mặc định.
 - **Đóng form:** `OnFormClosing` gọi `FlushPendingEditOperation()` trước (enqueue chunk typing cuối), sau đó `task.Wait(3s)` để sender drain hết queue.
@@ -1159,9 +1173,10 @@ Wire format: `[uint32_le LENGTH][UTF-8 JSON of Packet]`. `LENGTH` đọc trướ
 
 ### 10.3. Đồng bộ revision & conflict resolution
 
+- **Giới hạn packet OT hiện tại:** server nhận tối đa `BulkMaxCharsPerPacket = 8192` ký tự và `MaxOpsPerPacket = 64` op trong một `OP_INSERT`/`OP_DELETE`. Server broadcast `transformedOps` trong một `OP_BROADCAST` thay vì tách từng op.
 - **Revision tăng monotonically** trên server (`DocumentState.ServerRevision`, lock per-doc).
 - Mỗi client lưu `_clientRevision` riêng — tăng mỗi khi tự mình gửi op thành công.
-- Khi nhận `OP_BROADCAST` (op của user khác), client **không tăng** `_clientRevision` của mình; thay vào đó server đã transform sẵn nên client chỉ cần áp tại `pos` đã nhận.
+- Khi nhận `OP_BROADCAST` (op của user khác), client áp op tại `pos` đã transform sẵn và cập nhật `_clientRevision = max(_clientRevision, broadcast.clientResivion)`. Server broadcast `clientResivion = state.ServerRevision` sau khi apply để client không double-transform op đã nhận.
 - Trường hợp client mất gói (mạng chập chờn) nhưng server đã apply → khi client gõ tiếp với `clientRev` cũ, server vẫn transform được (vì có lịch sử trong `document_operations`). Đây là điểm quan trọng phân biệt với "broadcast trần".
 
 ### 10.4. Conflict tiêu biểu (II / ID / DI / DD)
@@ -1295,7 +1310,7 @@ LoginForm ──(login OK)──▶ HomeForm
 | Source | Target | Truyền gì |
 |--------|--------|-----------|
 | `LoginForm` | `HomeForm` | Không tham số; `SocketClient.Instance` đã chứa `Token`, `UserId`, `Username` |
-| `HomeForm` | `TypeRenderForm` | constructor `(string docId, string title, string content)` |
+| `HomeForm` | `TypeRenderForm` | constructor `(string docId, string title, string content, string permission = null)`; truyền permission sớm để editor không mặc định `viewer` trước khi sync lại `DOC_OPEN` |
 | `HomeForm` | `CreateDocumentForm` | `ShowDialog`; lấy `dlg.DocumentTitle` khi `DialogResult.OK` |
 | `TypeRenderForm` | `ShareDocumentForm` | `(_docId, _shareCode)` |
 | `TypeRenderForm` | `VersionHistoryForm` | `(_docId)` ; output `DocumentWasRestored`, `RestoredContent` |
@@ -1506,7 +1521,7 @@ if (op2.pos <= op1.pos)
     op1.pos += op2.text.Length;
 ```
 
-Tương tự II, dịch vị trí xoá. Hiện implementation **chưa** xử lý case insert chen vào giữa range đang xoá; với constraint ≤ 5 ký tự/op nó hiếm khi gây sai lệch lớn.
+Tương tự II, dịch vị trí xoá. Nếu insert chen vào giữa range đang xoá, server rút ngắn `delete.text` đến trước điểm insert để không xoá text vừa được user khác chèn.
 
 #### 17.2.4. Delete vs Delete (DD)
 
@@ -1526,6 +1541,13 @@ Tính phần đã bị op2 xoá trước đó nằm bên trái op1 → trừ và
 
 ### 17.3. Tần suất gửi OP từ client (OP_SEND_Frequency_Algorithm)
 
+- Từ đợt 2, client phân loại delta thành 4 case:
+  - `Typing`: gõ nhỏ sau debounce 120 ms, gom qua pending buffer và chunk tối đa 32 ký tự.
+  - `BulkInsert`: paste/insert lớn, enqueue chunk tối đa 8192 ký tự.
+  - `BulkDelete`: xóa selection lớn, enqueue chunk tối đa 8192 ký tự tại cùng `basePos`.
+  - `ReplaceBlock`: enqueue `BulkDelete` rồi `BulkInsert`; thông thường tối đa 2 packet nếu mỗi phần ≤ 8192 ký tự.
+- IME tiếng Việt không được xử lý bằng WM_IME composition event; debounce lấy delta cuối cùng giữa baseline đầu burst và text hiện tại, tránh broadcast chuỗi xóa rồi ghi lại cho remote.
+
 - Pending buffer: `(pendingType, pendingStartPos, pendingText)`.
 - Mỗi `TextChanged`:
   1. Tính `delta = ComputeTextDelta(old, new)` (longest common prefix / suffix).
@@ -1534,17 +1556,17 @@ Tính phần đã bị op2 xoá trước đó nằm bên trái op1 → trừ và
 - `QueueOperation`:
   - Nếu pending khác loại → flush ngay.
   - Nếu pending cùng loại nhưng không liền mạch (vd insert ở vị trí xa hơn) → flush + bắt đầu pending mới.
-  - Merge thành công → kiểm `pendingText.Length >= 5` → cắt chunk 5 ký tự gửi `OP_INSERT`/`OP_DELETE`. Lặp đến khi < 5.
-- `_opFlushTimer` 250 ms reset mỗi lần queue → khi user dừng gõ ≥ 250 ms, phần còn lại < 5 cũng được gửi.
-- **Bắt buộc flush** khi: đổi loại op, save, leave, close form.
+  - Merge thành công → kiểm `pendingText.Length >= 32` → cắt chunk 32 ký tự gửi `OP_INSERT`/`OP_DELETE`. Lặp đến khi < 32.
+- `_opFlushTimer` 250 ms reset mỗi lần queue → khi user dừng gõ ≥ 250 ms, phần còn lại < 32 cũng được gửi.
+- **Bắt buộc flush** khi: đổi loại op, trước khi áp `OP_BROADCAST`, save, leave, close form.
 
 Tần suất ước lượng (ký tự / giây = `r`):
 
 ```
-sendFrequency ≈ max(r/5, 1/0.25) ≈ max(r/5, 4) requests/s
+sendFrequency ≈ max(r/32, 1/0.25) ≈ max(r/32, 4) requests/s
 ```
 
-→ Gõ 60 wpm (~5 ký/s) → ~ 4-5 packet/s.
+→ Gõ 60 wpm (~5 ký/s) → chủ yếu flush theo idle/timer, ít packet hơn khi paste hoặc gõ liên tục.
 
 ### 17.4. Race condition tránh được nhờ thiết kế
 

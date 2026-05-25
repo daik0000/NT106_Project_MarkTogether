@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -30,6 +31,8 @@ namespace MarkTogether.Client
         private readonly Timer _opFlushTimer;
         private readonly Timer _autosaveTimer;
         private readonly Timer _draftTimer;
+        private readonly Timer _typingDebounceTimer;
+        private string _typingBaselineText;
         private string _lastMarkdownText = string.Empty;
         private PendingOpType? _pendingOpType;
         private int _pendingOpStartPos;
@@ -54,12 +57,21 @@ namespace MarkTogether.Client
         private readonly Queue<string> _pasteChunkQueue = new Queue<string>();
         private Task _pasteSendTask;
 
-        private const int MaxCharsPerPacket = 5;
+        private const int TypingMaxCharsPerPacket = 32;
+        private const int BulkMaxCharsPerPacket = 8192;
+        private const int TypingDebounceMs = 120;
+        private const int BulkClassifyThreshold = 64;
         private const int DefaultPeriodicAutosaveIntervalMs = 60000;
         private const int DraftSaveDebounceMs = 2000;
         private const int PasteThresholdChars = 20;
+        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+        private const int EM_LINESCROLL = 0x00B6;
 
         private enum PendingOpType { Insert, Delete }
+        private enum EditCase { None, Typing, BulkInsert, BulkDelete, ReplaceBlock }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
         private sealed class TextDelta
         {
@@ -131,9 +143,9 @@ namespace MarkTogether.Client
             "</script>" +
             "</head><body></body></html>";
 
-        public TypeRenderForm() : this(null, null, null) { }
+        public TypeRenderForm() : this(null, null, null, null, 0) { }
 
-        public TypeRenderForm(string docId, string title, string initialContent)
+        public TypeRenderForm(string docId, string title, string initialContent, string permission = null, int initialRevision = 0)
         {
             InitializeComponent();
 
@@ -142,7 +154,7 @@ namespace MarkTogether.Client
             _renderDebounceTimer = new Timer { Interval = 280 };
             _renderDebounceTimer.Tick += RenderDebounceTimer_Tick;
 
-            _opFlushTimer = new Timer { Interval = 250 };
+            _opFlushTimer = new Timer { Interval = 80 };
             _opFlushTimer.Tick += OpFlushTimer_Tick;
 
             _autosaveTimer = new Timer { Interval = DefaultPeriodicAutosaveIntervalMs };
@@ -150,6 +162,8 @@ namespace MarkTogether.Client
 
             _draftTimer = new Timer { Interval = DraftSaveDebounceMs };
             _draftTimer.Tick += DraftTimer_Tick;
+            _typingDebounceTimer = new Timer { Interval = TypingDebounceMs };
+            _typingDebounceTimer.Tick += TypingDebounceTimer_Tick;
             _periodicIntervalMs = DefaultPeriodicAutosaveIntervalMs;
 
             webPreview.TabStop = false;
@@ -160,11 +174,14 @@ namespace MarkTogether.Client
             _docId = docId;
             _docTitle = title;
             _initialContent = initialContent;
+            _permission = string.IsNullOrWhiteSpace(permission) ? "viewer" : permission;
+            _clientRevision = Math.Max(0, initialRevision);
 
             cmbAiMode.SelectedIndex = 0;
 
             ApplyInitialDocumentState();
             ApplyTheme();
+            UpdatePermissionUi();
 
             _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
             _lastSavedContent = _lastMarkdownText;
@@ -215,6 +232,7 @@ namespace MarkTogether.Client
                     var info = await Task.Run(() => SocketClient.Instance.OpenDocument(_docId));
                     _permission = info?.permission ?? "viewer";
                     _shareCode = info?.shareCode;
+                    SetClientRevisionMonotonic(info?.revision ?? 0);
                     UpdatePermissionUi();
                     await LoadChatHistoryAsync();
                     await LoadCommentsAsync();
@@ -263,7 +281,11 @@ namespace MarkTogether.Client
 
             // Doc title
             if (!string.IsNullOrWhiteSpace(_docTitle))
-                lblDocTitle.Text = _docTitle;
+            {
+                lblDocTitle.Text = _docTitle.Length > 20
+                    ? _docTitle.Substring(0, 20) + "..."
+                    : _docTitle;
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -475,16 +497,26 @@ namespace MarkTogether.Client
 
         private void txtRawMarkdown_TextChanged(object sender, EventArgs e)
         {
-            // Bọc toàn bộ handler để bug bất kỳ trong delta/queue không làm crash WinForms message pump.
             try
             {
+                Logger.Log($"[Editor] TextChanged len={txtRawMarkdown.TextLength} suppress={_suppressOpTracking}");
                 if (!_suppressOpTracking)
                 {
-                    TrackRealtimeEditOps(txtRawMarkdown.Text ?? string.Empty);
-                }
-                else
-                {
-                    _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
+                    if (_typingBaselineText == null)
+                        _typingBaselineText = _lastMarkdownText ?? string.Empty;
+
+                    string currentText = txtRawMarkdown.Text ?? string.Empty;
+                    int diff = Math.Abs(currentText.Length - _typingBaselineText.Length);
+                    if (diff > BulkClassifyThreshold * 2)
+                    {
+                        _typingDebounceTimer.Stop();
+                        TypingDebounceTimer_Tick(this, EventArgs.Empty);
+                    }
+                    else
+                    {
+                        _typingDebounceTimer.Stop();
+                        _typingDebounceTimer.Start();
+                    }
                 }
 
                 if (!_suppressOpTracking && !string.IsNullOrWhiteSpace(_docId))
@@ -505,7 +537,6 @@ namespace MarkTogether.Client
             }
             catch (Exception ex)
             {
-                // KHÔNG log nội dung văn bản — chỉ log độ dài + exception để chẩn đoán
                 Logger.Log($"[Editor] TextChanged exception (textLen={(txtRawMarkdown.Text ?? string.Empty).Length}): {ex.GetType().Name}: {ex.Message}");
             }
         }
@@ -568,6 +599,51 @@ namespace MarkTogether.Client
             }
         }
 
+        private void TypingDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            _typingDebounceTimer.Stop();
+            try
+            {
+                if (_typingBaselineText == null) return;
+
+                string baseline = _typingBaselineText;
+                _typingBaselineText = null;
+
+                string current = txtRawMarkdown.Text ?? string.Empty;
+                if (baseline == current)
+                {
+                    _lastMarkdownText = current;
+                    return;
+                }
+
+                _lastMarkdownText = baseline;
+                TrackRealtimeEditOps(current);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"[OT] TypingDebounce exception: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private static EditCase ClassifyEditCase(TextDelta delta)
+        {
+            if (delta == null) return EditCase.None;
+
+            int del = delta.DeletedText?.Length ?? 0;
+            int ins = delta.InsertedText?.Length ?? 0;
+            if (del == 0 && ins == 0) return EditCase.None;
+
+            bool delBulk = del > BulkClassifyThreshold;
+            bool insBulk = ins > BulkClassifyThreshold;
+
+            if (del > 0 && ins > 0)
+                return (!delBulk && !insBulk) ? EditCase.Typing : EditCase.ReplaceBlock;
+
+            if (insBulk) return EditCase.BulkInsert;
+            if (delBulk) return EditCase.BulkDelete;
+            return EditCase.Typing;
+        }
+
         private void TrackRealtimeEditOps(string newText)
         {
             string oldText = _lastMarkdownText ?? string.Empty;
@@ -580,6 +656,7 @@ namespace MarkTogether.Client
             }
 
             var delta = ComputeTextDelta(oldText, newText);
+            Logger.Log($"[OT] Delta pos={delta?.Position ?? 0} del={delta?.DeletedText?.Length ?? 0} ins={delta?.InsertedText?.Length ?? 0}");
             if (delta == null)
             {
                 FlushPendingEditOperation();
@@ -587,21 +664,48 @@ namespace MarkTogether.Client
                 return;
             }
 
-            if (!string.IsNullOrEmpty(delta.DeletedText) && !string.IsNullOrEmpty(delta.InsertedText))
+            var editCase = ClassifyEditCase(delta);
+            Logger.Log($"[OT] Classify case={editCase} del={delta.DeletedText?.Length ?? 0} ins={delta.InsertedText?.Length ?? 0}");
+
+            switch (editCase)
             {
-                FlushPendingEditOperation();
-                QueueOperation(PendingOpType.Delete, delta.Position, delta.DeletedText);
-                FlushPendingEditOperation();
-                QueueOperation(PendingOpType.Insert, delta.Position, delta.InsertedText);
-                FlushPendingEditOperation();
-            }
-            else if (!string.IsNullOrEmpty(delta.InsertedText))
-            {
-                QueueOperation(PendingOpType.Insert, delta.Position, delta.InsertedText);
-            }
-            else if (!string.IsNullOrEmpty(delta.DeletedText))
-            {
-                QueueOperation(PendingOpType.Delete, delta.Position, delta.DeletedText);
+                case EditCase.None:
+                    break;
+
+                case EditCase.Typing:
+                    if (!string.IsNullOrEmpty(delta.DeletedText) && !string.IsNullOrEmpty(delta.InsertedText))
+                    {
+                        FlushPendingEditOperation();
+                        QueueOperation(PendingOpType.Delete, delta.Position, delta.DeletedText);
+                        FlushPendingEditOperation();
+                        QueueOperation(PendingOpType.Insert, delta.Position, delta.InsertedText);
+                        FlushPendingEditOperation();
+                    }
+                    else if (!string.IsNullOrEmpty(delta.InsertedText))
+                    {
+                        QueueOperation(PendingOpType.Insert, delta.Position, delta.InsertedText);
+                    }
+                    else if (!string.IsNullOrEmpty(delta.DeletedText))
+                    {
+                        QueueOperation(PendingOpType.Delete, delta.Position, delta.DeletedText);
+                    }
+                    break;
+
+                case EditCase.BulkInsert:
+                    FlushPendingEditOperation();
+                    EnqueueBulkOp(PendingOpType.Insert, delta.Position, delta.InsertedText);
+                    break;
+
+                case EditCase.BulkDelete:
+                    FlushPendingEditOperation();
+                    EnqueueBulkOp(PendingOpType.Delete, delta.Position, delta.DeletedText);
+                    break;
+
+                case EditCase.ReplaceBlock:
+                    FlushPendingEditOperation();
+                    EnqueueBulkOp(PendingOpType.Delete, delta.Position, delta.DeletedText);
+                    EnqueueBulkOp(PendingOpType.Insert, delta.Position, delta.InsertedText);
+                    break;
             }
 
             _lastMarkdownText = newText;
@@ -629,6 +733,7 @@ namespace MarkTogether.Client
 
         private void QueueOperation(PendingOpType opType, int position, string text)
         {
+            Logger.Log($"[OT] QueueOp type={opType} pos={position} len={text?.Length ?? 0} pendType={_pendingOpType} pendLen={_pendingOpText.Length}");
             if (string.IsNullOrEmpty(text)) return;
 
             if (_pendingOpType.HasValue && _pendingOpType.Value != opType)
@@ -683,14 +788,14 @@ namespace MarkTogether.Client
 
         private void SendPendingChunksIfNeeded()
         {
-            while (_pendingOpType.HasValue && _pendingOpText.Length >= MaxCharsPerPacket)
+            while (_pendingOpType.HasValue && _pendingOpText.Length >= TypingMaxCharsPerPacket)
             {
-                string chunk = _pendingOpText.Substring(0, MaxCharsPerPacket);
+                string chunk = _pendingOpText.Substring(0, TypingMaxCharsPerPacket);
                 SendCurrentPendingChunk(chunk);
-                _pendingOpText = _pendingOpText.Substring(MaxCharsPerPacket);
+                _pendingOpText = _pendingOpText.Substring(TypingMaxCharsPerPacket);
                 // Chỉ tăng position cho insert; delete luôn xóa tại cùng vị trí
                 if (_pendingOpType.Value == PendingOpType.Insert)
-                    _pendingOpStartPos += MaxCharsPerPacket;
+                    _pendingOpStartPos += TypingMaxCharsPerPacket;
             }
         }
 
@@ -709,9 +814,11 @@ namespace MarkTogether.Client
         private void FlushPendingEditOperation()
         {
             _opFlushTimer.Stop();
+            if (_pendingOpType.HasValue)
+                Logger.Log($"[OT] Flush type={_pendingOpType} pos={_pendingOpStartPos} len={_pendingOpText.Length}");
             while (_pendingOpType.HasValue && !string.IsNullOrEmpty(_pendingOpText))
             {
-                int size = Math.Min(MaxCharsPerPacket, _pendingOpText.Length);
+                int size = Math.Min(TypingMaxCharsPerPacket, _pendingOpText.Length);
                 string chunk = _pendingOpText.Substring(0, size);
                 SendCurrentPendingChunk(chunk);
                 _pendingOpText = _pendingOpText.Substring(size);
@@ -725,14 +832,27 @@ namespace MarkTogether.Client
 
         private void SendCurrentPendingChunk(string chunk)
         {
-            if (!_pendingOpType.HasValue || string.IsNullOrEmpty(chunk) || string.IsNullOrWhiteSpace(_docId)) return;
-            if (!_trackRealtimeOps || !SocketClient.Instance.IsLoggedIn) return;
-            if (_permission != "owner" && _permission != "editor") return;
+            if (!_pendingOpType.HasValue || string.IsNullOrEmpty(chunk) || string.IsNullOrWhiteSpace(_docId))
+            {
+                Logger.Log($"[OT] Pending chunk skipped: missing state doc={_docId} hasType={_pendingOpType.HasValue} len={chunk?.Length ?? 0}");
+                return;
+            }
+            if (!_trackRealtimeOps || !SocketClient.Instance.IsLoggedIn)
+            {
+                Logger.Log($"[OT] Pending chunk skipped: tracking={_trackRealtimeOps} loggedIn={SocketClient.Instance.IsLoggedIn}");
+                return;
+            }
+            if (_permission != "owner" && _permission != "editor")
+            {
+                Logger.Log($"[OT] Pending chunk skipped: permission={_permission}");
+                return;
+            }
 
             lock (_pasteLock)
             {
                 char op = _pendingOpType.Value == PendingOpType.Insert ? 'I' : 'D';
                 _pasteChunkQueue.Enqueue($"{op}|{_pendingOpStartPos}|{chunk}");
+                Logger.Log($"[OT] Enqueue type={_pendingOpType} pos={_pendingOpStartPos} len={chunk.Length} q={_pasteChunkQueue.Count}");
             }
             EnsurePasteSenderRunning();
         }
@@ -740,6 +860,32 @@ namespace MarkTogether.Client
         // ═══════════════════════════════════════════════════════════
         //  Push handlers (chạy từ thread khác → dùng BeginInvoke)
         // ═══════════════════════════════════════════════════════════
+        private void SetClientRevisionMonotonic(int revision)
+        {
+            int observedRev;
+            while (revision > (observedRev = System.Threading.Interlocked.CompareExchange(ref _clientRevision, 0, 0)))
+            {
+                if (System.Threading.Interlocked.CompareExchange(ref _clientRevision, revision, observedRev) == observedRev)
+                    break;
+            }
+        }
+
+        private static int GetFirstVisibleLine(TextBox textBox)
+        {
+            if (textBox == null || !textBox.IsHandleCreated) return 0;
+            return SendMessage(textBox.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero).ToInt32();
+        }
+
+        private static void RestoreFirstVisibleLine(TextBox textBox, int targetLine)
+        {
+            if (textBox == null || !textBox.IsHandleCreated) return;
+
+            int currentLine = GetFirstVisibleLine(textBox);
+            int delta = targetLine - currentLine;
+            if (delta != 0)
+                SendMessage(textBox.Handle, EM_LINESCROLL, IntPtr.Zero, new IntPtr(delta));
+        }
+
         private void HandleOpBroadcast(Payload_OP_BROADCAST p)
         {
             if (p == null)
@@ -764,40 +910,68 @@ namespace MarkTogether.Client
             }
 
             Logger.Log($"[OT] Broadcast received: doc={p.docID} user={p.userID} type={p.opType} ops={p.ops?.Count ?? 0}");
+            Logger.Log($"[OT] BroadcastEnter ops={p.ops?.Count ?? 0} type={p.opType} rev={p.clientResivion}");
 
             BeginInvoke((Action)(() =>
             {
                 try
                 {
+                    _typingDebounceTimer.Stop();
+                    _typingBaselineText = null;
+
+                    // Flush local pending ops before applying a remote op so queued positions stay valid.
+                    FlushPendingEditOperation();
+                    var pendingSendTask = _pasteSendTask;
+                    if (pendingSendTask != null && !pendingSendTask.IsCompleted)
+                    {
+                        bool drained = pendingSendTask.Wait(TimeSpan.FromMilliseconds(1500));
+                        if (!drained)
+                            Logger.Log("[OT] Broadcast applying with local send queue still pending after 1500ms");
+                    }
                     _suppressOpTracking = true;
                     int caret = txtRawMarkdown.SelectionStart;
-                    string current = txtRawMarkdown.Text ?? string.Empty;
+                    int firstVisibleLine = GetFirstVisibleLine(txtRawMarkdown);
+                    int currentLen = txtRawMarkdown.TextLength;
 
                     foreach (var op in p.ops ?? Enumerable.Empty<EditOpItem>())
                     {
                         if (op == null) continue;
-                        int pos = Math.Max(0, Math.Min(op.pos, current.Length));
+                        int pos = Math.Max(0, Math.Min(op.pos, currentLen));
                         string text = op.text ?? "";
                         if (p.opType == "insert")
                         {
-                            current = current.Insert(pos, text);
+                            txtRawMarkdown.SelectionStart = pos;
+                            txtRawMarkdown.SelectionLength = 0;
+                            txtRawMarkdown.SelectedText = text;
+                            currentLen += text.Length;
                             if (caret >= pos) caret += text.Length;
                         }
                         else // delete
                         {
-                            int len = Math.Min(text.Length, current.Length - pos);
+                            int len = Math.Min(text.Length, currentLen - pos);
                             if (len > 0)
                             {
-                                current = current.Remove(pos, len);
+                                txtRawMarkdown.SelectionStart = pos;
+                                txtRawMarkdown.SelectionLength = len;
+                                txtRawMarkdown.SelectedText = "";
+                                currentLen -= len;
                                 if (caret > pos) caret -= Math.Min(len, caret - pos);
                             }
                         }
                     }
 
-                    txtRawMarkdown.Text = current;
-                    txtRawMarkdown.SelectionStart = Math.Max(0, Math.Min(caret, current.Length));
-                    _lastMarkdownText = current;
+                    int actualLen = txtRawMarkdown.TextLength;
+                    if (actualLen != currentLen)
+                        Logger.Log($"[OT] Broadcast length mismatch tracked={currentLen} actual={actualLen}");
+
+                    txtRawMarkdown.SelectionStart = Math.Max(0, Math.Min(caret, actualLen));
+                    txtRawMarkdown.SelectionLength = 0;
+                    RestoreFirstVisibleLine(txtRawMarkdown, firstVisibleLine);
+                    _lastMarkdownText = txtRawMarkdown.Text ?? string.Empty;
                     Logger.Log($"[OT] Broadcast applied: doc={p.docID} type={p.opType} ops={p.ops?.Count ?? 0}");
+                    Logger.Log($"[OT] BroadcastApplied ops={p.ops?.Count ?? 0} finalLen={actualLen}");
+
+                    SetClientRevisionMonotonic(p.clientResivion);
                 }
                 catch (Exception ex)
                 {
@@ -842,9 +1016,12 @@ namespace MarkTogether.Client
                 try
                 {
                     var info = await Task.Run(() => SocketClient.Instance.OpenDocument(_docId));
+                    _typingDebounceTimer.Stop();
+                    _typingBaselineText = null;
                     _suppressOpTracking = true;
                     txtRawMarkdown.Text = info.content ?? string.Empty;
                     _lastMarkdownText = txtRawMarkdown.Text;
+                    SetClientRevisionMonotonic(info?.revision ?? 0);
                     _suppressOpTracking = false;
 
                     MessageBox.Show("Tài liệu vừa được khôi phục. Nội dung đã được tải lại.",
@@ -1015,6 +1192,8 @@ namespace MarkTogether.Client
                 dlg.ShowDialog(this);
                 if (dlg.DocumentWasRestored && dlg.RestoredContent != null)
                 {
+                    _typingDebounceTimer.Stop();
+                    _typingBaselineText = null;
                     _suppressOpTracking = true;
                     txtRawMarkdown.Text = dlg.RestoredContent;
                     _lastMarkdownText = txtRawMarkdown.Text;
@@ -1654,6 +1833,8 @@ namespace MarkTogether.Client
             _autosaveTimer.Dispose();
             _draftTimer.Tick -= DraftTimer_Tick;
             _draftTimer.Dispose();
+            _typingDebounceTimer.Tick -= TypingDebounceTimer_Tick;
+            _typingDebounceTimer.Dispose();
 
             if (webPreview.CoreWebView2 != null)
                 webPreview.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;
@@ -1675,6 +1856,12 @@ namespace MarkTogether.Client
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            if (_typingDebounceTimer != null && _typingDebounceTimer.Enabled)
+            {
+                _typingDebounceTimer.Stop();
+                try { TypingDebounceTimer_Tick(this, EventArgs.Empty); } catch { }
+            }
+
             // Flush trước để đẩy chunk typing cuối vào queue, sau đó mới wait
             FlushPendingEditOperation();
 
@@ -1766,6 +1953,11 @@ namespace MarkTogether.Client
         {
             if (string.IsNullOrEmpty(pasted)) return;
 
+            if (_typingDebounceTimer != null && _typingDebounceTimer.Enabled)
+            {
+                _typingDebounceTimer.Stop();
+                try { TypingDebounceTimer_Tick(this, EventArgs.Empty); } catch { }
+            }
             FlushPendingEditOperation();
 
             int selStart = txtRawMarkdown.SelectionStart;
@@ -1808,35 +2000,57 @@ namespace MarkTogether.Client
                 return;
             }
 
-            EnqueuePasteOperations(selStart, selectedText, pasted);
-            EnsurePasteSenderRunning();
+            if (!string.IsNullOrEmpty(selectedText))
+                EnqueueBulkOp(PendingOpType.Delete, selStart, selectedText);
+            EnqueueBulkOp(PendingOpType.Insert, selStart, pasted);
         }
 
-        private void EnqueuePasteOperations(int basePos, string replacedSelection, string pasted)
+        private void EnqueueBulkOp(PendingOpType opType, int basePos, string text)
         {
+            if (string.IsNullOrEmpty(text)) return;
+
+            if (!_trackRealtimeOps || string.IsNullOrWhiteSpace(_docId) || !SocketClient.Instance.IsLoggedIn)
+            {
+                Logger.Log($"[OT] Bulk skipped: tracking={_trackRealtimeOps} loggedIn={SocketClient.Instance.IsLoggedIn}");
+                return;
+            }
+            if (_permission != "owner" && _permission != "editor")
+            {
+                Logger.Log($"[OT] Bulk skipped: permission={_permission}");
+                return;
+            }
+
+            int chunkCount = 0;
             lock (_pasteLock)
             {
-                if (!string.IsNullOrEmpty(replacedSelection))
+                if (opType == PendingOpType.Insert)
                 {
-                    for (int i = 0; i < replacedSelection.Length;)
+                    int insertPos = basePos;
+                    for (int i = 0; i < text.Length;)
                     {
-                        int size = SafeChunkLength(replacedSelection, i, MaxCharsPerPacket);
-                        string chunk = replacedSelection.Substring(i, size);
-                        _pasteChunkQueue.Enqueue($"D|{basePos}|{chunk}");
+                        int size = SafeChunkLength(text, i, BulkMaxCharsPerPacket);
+                        string chunk = text.Substring(i, size);
+                        _pasteChunkQueue.Enqueue($"I|{insertPos}|{chunk}");
+                        insertPos += size;
                         i += size;
+                        chunkCount++;
                     }
                 }
-
-                int insertPos = basePos;
-                for (int i = 0; i < pasted.Length;)
+                else
                 {
-                    int size = SafeChunkLength(pasted, i, MaxCharsPerPacket);
-                    string chunk = pasted.Substring(i, size);
-                    _pasteChunkQueue.Enqueue($"I|{insertPos}|{chunk}");
-                    insertPos += size;
-                    i += size;
+                    for (int i = 0; i < text.Length;)
+                    {
+                        int size = SafeChunkLength(text, i, BulkMaxCharsPerPacket);
+                        string chunk = text.Substring(i, size);
+                        _pasteChunkQueue.Enqueue($"D|{basePos}|{chunk}");
+                        i += size;
+                        chunkCount++;
+                    }
                 }
             }
+
+            Logger.Log($"[OT] BulkEnqueue type={opType} pos={basePos} totalLen={text.Length} chunks={chunkCount}");
+            EnsurePasteSenderRunning();
         }
 
         private static int SafeChunkLength(string text, int start, int maxLen)
@@ -1854,6 +2068,7 @@ namespace MarkTogether.Client
         {
             lock (_pasteLock)
             {
+                Logger.Log($"[OT] EnsureSender hasTask={_pasteSendTask != null} done={(_pasteSendTask?.IsCompleted ?? true)} q={_pasteChunkQueue.Count}");
                 if (_pasteSendTask != null && !_pasteSendTask.IsCompleted)
                     return;
 
@@ -1900,15 +2115,22 @@ namespace MarkTogether.Client
                     try
                     {
                         int rev = _clientRevision;
+                        Logger.Log($"[OT] SendChunk op={opChar} pos={pos} len={text.Length} rev={rev}");
+                        int serverRevision;
                         if (opChar == 'I')
-                            SocketClient.Instance.SendInsertOps(_docId, rev, ops);
+                            serverRevision = SocketClient.Instance.SendInsertOps(_docId, rev, ops);
                         else
-                            SocketClient.Instance.SendDeleteOps(_docId, rev, ops);
+                            serverRevision = SocketClient.Instance.SendDeleteOps(_docId, rev, ops);
 
-                        System.Threading.Interlocked.Increment(ref _clientRevision);
+                        if (serverRevision > 0)
+                            SetClientRevisionMonotonic(serverRevision);
+                        else
+                            System.Threading.Interlocked.Increment(ref _clientRevision);
+                        Logger.Log($"[OT] SendChunk OK newRev={_clientRevision}");
                     }
                     catch (Exception ex)
                     {
+                        Logger.Log($"[OT] SendChunk FAIL {ex.GetType().Name}: {ex.Message} loggedIn={SocketClient.Instance.IsLoggedIn} q={_pasteChunkQueue.Count}");
                         System.Diagnostics.Debug.WriteLine($"[Paste] Send chunk failed: {ex.Message}");
                         if (!SocketClient.Instance.IsLoggedIn)
                         {
