@@ -561,5 +561,6 @@ namespace MarkTogether.Client
             colUpdatedAt.Width = updatedWidth;
             colPermission.Width = permissionWidth;
         }
+
     }
 }
