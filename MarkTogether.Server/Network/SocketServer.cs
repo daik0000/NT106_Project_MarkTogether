@@ -17,6 +17,7 @@ namespace MarkTogether.Server.Network
     {
         private TcpListener _listener;
         private readonly int _port;
+        private readonly IPAddress _listenAddress;
         private readonly X509Certificate2 _serverCert;
         private bool _running;
 
@@ -24,10 +25,11 @@ namespace MarkTogether.Server.Network
         private static readonly List<ClientHandler> _activeHandlers = new List<ClientHandler>();
         private static readonly object _handlersLock = new object();
 
-        public SocketServer(int port, X509Certificate2 cert)
+        public SocketServer(int port, X509Certificate2 cert, IPAddress listenAddress = null)
         {
             _port = port;
             _serverCert = cert;
+            _listenAddress = listenAddress ?? IPAddress.Any;
         }
 
         /// <summary>
@@ -35,11 +37,11 @@ namespace MarkTogether.Server.Network
         /// </summary>
         public async Task StartAsync()
         {
-            _listener = new TcpListener(IPAddress.Any, _port);
+            _listener = new TcpListener(_listenAddress, _port);
             _listener.Start();
             _running = true;
 
-            Console.WriteLine($"[Server] Đang lắng nghe trên port {_port}...");
+            Console.WriteLine($"[Server] Đang lắng nghe trên {_listenAddress}:{_port}...");
 
             while (_running)
             {

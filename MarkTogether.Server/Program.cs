@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
@@ -40,6 +41,7 @@ namespace MarkTogether.Server
             Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
             int port = ResolvePort();
+            IPAddress listenAddress = ResolveListenAddress();
 
             Console.WriteLine("╔════════════════════════════════════════╗");
             Console.WriteLine("║     MarkTogether Server v1.0          ║");
@@ -51,7 +53,7 @@ namespace MarkTogether.Server
 
             // 2. Khởi động TCP Socket Server
             var cert = LoadServerCertificate();
-            var server = new SocketServer(port, cert);
+            var server = new SocketServer(port, cert, listenAddress);
             Task.Run(() => server.StartAsync());
 
             if (isService)
@@ -79,8 +81,17 @@ namespace MarkTogether.Server
 
         private static X509Certificate2 LoadServerCertificate()
         {
-            string certPath = System.Configuration.ConfigurationManager.AppSettings["TlsCertPath"];
-            string certPass = System.Configuration.ConfigurationManager.AppSettings["TlsCertPassword"];
+            string certPath = Environment.GetEnvironmentVariable("MARKTOGETHER_TLS_CERT_PATH");
+            if (string.IsNullOrWhiteSpace(certPath))
+            {
+                certPath = System.Configuration.ConfigurationManager.AppSettings["TlsCertPath"];
+            }
+
+            string certPass = Environment.GetEnvironmentVariable("MARKTOGETHER_TLS_CERT_PASSWORD");
+            if (certPass == null)
+            {
+                certPass = System.Configuration.ConfigurationManager.AppSettings["TlsCertPassword"];
+            }
 
             if (string.IsNullOrWhiteSpace(certPath))
                 throw new InvalidOperationException("Thiếu cấu hình TlsCertPath trong App.config.");
@@ -90,6 +101,20 @@ namespace MarkTogether.Server
                 : Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, certPath));
 
             return new X509Certificate2(resolvedPath, certPass);
+        }
+
+        private static IPAddress ResolveListenAddress()
+        {
+            string rawHost = Environment.GetEnvironmentVariable("MARKTOGETHER_LISTEN_HOST");
+            if (string.IsNullOrWhiteSpace(rawHost))
+                return IPAddress.Any;
+
+            IPAddress parsed;
+            if (IPAddress.TryParse(rawHost.Trim(), out parsed))
+                return parsed;
+
+            Console.WriteLine($"[Config] MARKTOGETHER_LISTEN_HOST không hợp lệ ('{rawHost}'), fallback về 0.0.0.0.");
+            return IPAddress.Any;
         }
 
         private static int ResolvePort()
