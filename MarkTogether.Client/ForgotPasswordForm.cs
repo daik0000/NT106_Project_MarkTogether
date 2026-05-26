@@ -28,8 +28,6 @@ namespace MarkTogether.Client
             UiFactory.StyleInputPanel(pnlOtp);
             UiFactory.StyleInputPanel(pnlNewPassword);
             UiFactory.StyleInputPanel(pnlConfirmPassword);
-            UiFactory.ApplyRoundedRegion(lblMessage, AppTheme.CornerRadius);
-            lblMessage.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(lblMessage, AppTheme.CornerRadius);
             ShowStep1();
         }
 

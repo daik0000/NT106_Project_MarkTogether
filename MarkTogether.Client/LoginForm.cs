@@ -20,13 +20,11 @@ namespace MarkTogether.Client
         {
             CenterCard();
 
-            // Apply rounded styling cho card / button
+            // Apply theme styling cho card / button
             UiFactory.StyleAsCard(pnlCard);
             UiFactory.StylePrimaryButton(btnLogin);
-            UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
-            lblErrorBanner.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
 
-            // Input panels: chỉ vẽ border, KHÔNG clip Region (tránh mất nét)
+            // Input panels: chỉ vẽ border vuông.
             UiFactory.StyleInputPanel(pnlUsername);
             UiFactory.StyleInputPanel(pnlPassword);
 

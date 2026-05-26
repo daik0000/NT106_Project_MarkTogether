@@ -43,10 +43,8 @@ namespace MarkTogether.Client
                     ev.Graphics.DrawLine(pen, 0, pnlHeader.Height - 1, pnlHeader.Width, pnlHeader.Height - 1);
             };
 
-            // pnlJoin: rounded region + focus-aware border (single Paint handler, không dùng StyleAsCard để tránh double-paint)
+            // pnlJoin: focus-aware square border (single Paint handler, không dùng StyleAsCard để tránh double-paint)
             pnlJoin.BackColor = AppTheme.Surface;
-            UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
-            pnlJoin.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
             txtJoinCode.GotFocus += (s, ev) => { pnlJoin.Tag = "focus"; pnlJoin.Invalidate(); };
             txtJoinCode.LostFocus += (s, ev) => { pnlJoin.Tag = null; pnlJoin.Invalidate(); };
             pnlJoin.Paint += (s, ev) =>

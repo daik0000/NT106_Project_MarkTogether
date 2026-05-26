@@ -21,10 +21,8 @@ namespace MarkTogether.Client
 
             UiFactory.StyleAsCard(pnlCard);
             UiFactory.StylePrimaryButton(btnRegister);
-            UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
-            lblErrorBanner.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(lblErrorBanner, AppTheme.CornerRadius);
 
-            // Input panels: chỉ vẽ border, KHÔNG clip Region (tránh mất nét)
+            // Input panels: chỉ vẽ border vuông.
             UiFactory.StyleInputPanel(pnlUsername);
             UiFactory.StyleInputPanel(pnlEmail);
             UiFactory.StyleInputPanel(pnlPassword);

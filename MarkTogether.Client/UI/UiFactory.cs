@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace MarkTogether.Client.UI
@@ -33,8 +32,6 @@ namespace MarkTogether.Client.UI
             };
             btn.FlatAppearance.BorderSize = 0;
             ApplyButtonVariant(btn, variant);
-            ApplyRoundedRegion(btn, AppTheme.CornerRadius);
-            btn.Resize += (s, e) => ApplyRoundedRegion(btn, AppTheme.CornerRadius);
             return btn;
         }
 
@@ -100,47 +97,13 @@ namespace MarkTogether.Client.UI
             btn.UseVisualStyleBackColor = false;
             ApplyButtonVariant(btn, variant);
             if (btn.Height < AppTheme.ButtonHeightSmall) btn.Height = AppTheme.ButtonHeightSmall;
-            ApplyRoundedRegion(btn, AppTheme.CornerRadius);
-            btn.Resize -= ButtonResizeRound;
-            btn.Resize += ButtonResizeRound;
-        }
-
-        private static void ButtonResizeRound(object sender, EventArgs e)
-        {
-            if (sender is Button b) ApplyRoundedRegion(b, AppTheme.CornerRadius);
-        }
-
-        public static void ApplyRoundedRegion(Control ctrl, int radius)
-        {
-            if (ctrl == null || ctrl.Width <= 0 || ctrl.Height <= 0) return;
-            using (var path = CreateRoundedRectanglePath(ctrl.ClientRectangle, radius))
-            {
-                ctrl.Region = new Region(path);
-            }
-        }
-
-        public static GraphicsPath CreateRoundedRectanglePath(Rectangle bounds, int radius)
-        {
-            int diameter = Math.Max(1, radius * 2);
-            var arc = new Rectangle(bounds.Location, new Size(diameter, diameter));
-            var path = new GraphicsPath();
-            path.AddArc(arc, 180, 90);
-            arc.X = bounds.Right - diameter;
-            path.AddArc(arc, 270, 90);
-            arc.Y = bounds.Bottom - diameter;
-            path.AddArc(arc, 0, 90);
-            arc.X = bounds.Left;
-            path.AddArc(arc, 90, 90);
-            path.CloseFigure();
-            return path;
         }
 
         // ═══════════════════════════════════════════════════════════
-        //  INPUT PANELS (border without Region clipping)
+        //  INPUT PANELS (square border)
         // ═══════════════════════════════════════════════════════════
         /// <summary>
-        /// Style một Panel wrapper cho TextBox: vẽ viền bo góc mà KHÔNG clip Region.
-        /// Tránh lỗi border bị mất nét do Region cắt pixel ở viền.
+        /// Style một Panel wrapper cho TextBox: vẽ viền vuông, không clip control.
         /// </summary>
         public static void StyleInputPanel(Panel panel)
         {
@@ -164,7 +127,7 @@ namespace MarkTogether.Client.UI
         }
 
         /// <summary>
-        /// Style một TextBox với viền bo góc, focus highlight.
+        /// Style một TextBox với viền vuông, focus highlight.
         /// TextBox phải nằm trong một Panel wrapper.
         /// </summary>
         public static void StyleTextBoxWithPanel(Panel panel, TextBox tb)
@@ -192,7 +155,7 @@ namespace MarkTogether.Client.UI
         }
 
         /// <summary>
-        /// Style một TextBox đơn giản (có border, bo góc nhẹ) — dùng cho form dialog nhỏ.
+        /// Style một TextBox đơn giản có border, dùng cho form dialog nhỏ.
         /// </summary>
         public static void StyleTextBox(TextBox tb)
         {
@@ -241,7 +204,7 @@ namespace MarkTogether.Client.UI
         //  CARDS / PANELS
         // ═══════════════════════════════════════════════════════════
         /// <summary>
-        /// Tạo panel "card" với background trắng, viền nhẹ, bo góc.
+        /// Tạo panel "card" với background trắng và viền nhẹ.
         /// </summary>
         public static Panel CreateCard(int padding = -1)
         {
@@ -256,8 +219,6 @@ namespace MarkTogether.Client.UI
             {
                 DrawBorder(e.Graphics, card.ClientRectangle, AppTheme.Border, AppTheme.CornerRadiusLg);
             };
-            ApplyRoundedRegion(card, AppTheme.CornerRadiusLg);
-            card.Resize += (s, e) => ApplyRoundedRegion(card, AppTheme.CornerRadiusLg);
             return card;
         }
 
@@ -267,8 +228,6 @@ namespace MarkTogether.Client.UI
             ctrl.BackColor = AppTheme.Surface;
             ctrl.Paint += (s, e) =>
                 DrawBorder(e.Graphics, ctrl.ClientRectangle, AppTheme.Border, r);
-            ApplyRoundedRegion(ctrl, r);
-            ctrl.Resize += (s, e) => ApplyRoundedRegion(ctrl, r);
         }
 
         /// <summary>
@@ -366,8 +325,6 @@ namespace MarkTogether.Client.UI
                 Padding = new Padding(AppTheme.SpaceSm, 4, AppTheme.SpaceSm, 4),
                 TextAlign = ContentAlignment.MiddleCenter
             };
-            ApplyRoundedRegion(lbl, AppTheme.CornerRadius);
-            lbl.Resize += (s, e) => ApplyRoundedRegion(lbl, AppTheme.CornerRadius);
             return lbl;
         }
 
@@ -425,12 +382,11 @@ namespace MarkTogether.Client.UI
         // ═══════════════════════════════════════════════════════════
         public static void DrawBorder(Graphics g, Rectangle bounds, Color color, int radius)
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (g == null || bounds.Width <= 0 || bounds.Height <= 0) return;
             var rect = new Rectangle(bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
-            using (var path = CreateRoundedRectanglePath(rect, radius))
             using (var pen = new Pen(color, 1f))
             {
-                g.DrawPath(pen, path);
+                g.DrawRectangle(pen, rect);
             }
         }
 
@@ -474,6 +430,9 @@ namespace MarkTogether.Client.UI
 
         private static void ListViewItemPaint(object sender, DrawListViewItemEventArgs e)
         {
+            if (sender is ListView lv && lv.View == View.Details)
+                return;
+
             Color bg = e.Item.Selected ? AppTheme.SelectedFill : AppTheme.Surface;
             using (var brush = new SolidBrush(bg))
                 e.Graphics.FillRectangle(brush, e.Bounds);
@@ -483,6 +442,12 @@ namespace MarkTogether.Client.UI
 
         private static void ListViewSubItemPaint(object sender, DrawListViewSubItemEventArgs e)
         {
+            Color bg = e.Item.Selected ? AppTheme.SelectedFill : AppTheme.Surface;
+            using (var brush = new SolidBrush(bg))
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            using (var pen = new Pen(AppTheme.Divider))
+                e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+
             string text = e.SubItem?.Text ?? "";
             TextRenderer.DrawText(
                 e.Graphics,
@@ -490,7 +455,7 @@ namespace MarkTogether.Client.UI
                 AppTheme.Body,
                 new Rectangle(e.Bounds.X + AppTheme.SpaceMd, e.Bounds.Y, e.Bounds.Width - AppTheme.SpaceMd, e.Bounds.Height),
                 AppTheme.TextPrimary,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
 
         // ═══════════════════════════════════════════════════════════

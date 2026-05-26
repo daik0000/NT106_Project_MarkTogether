@@ -104,19 +104,19 @@ namespace MarkTogether.Client
             "em{font-style:italic;color:#334155}" +
             "code{font-family:'Cascadia Code','Fira Code',Consolas,'Courier New',monospace;" +
             "font-size:.875em;background:#f1f5f9;color:#be123c;" +
-            "padding:2px 6px;border-radius:5px;border:1px solid #e2e8f0}" +
-            "pre{background:#0f172a !important;padding:18px 22px;border-radius:12px;overflow:auto;" +
+            "padding:2px 6px;border:1px solid #e2e8f0}" +
+            "pre{background:#0f172a !important;padding:18px 22px;overflow:auto;" +
             "margin:1.25em 0;font-size:.875em;line-height:1.65;" +
             "box-shadow:0 4px 16px rgba(0,0,0,.25);border:1px solid #1e293b}" +
-            "pre code{background:transparent !important;color:inherit;padding:0;border:none;border-radius:0;font-size:1em}" +
+            "pre code{background:transparent !important;color:inherit;padding:0;border:none;font-size:1em}" +
             "blockquote{border-left:4px solid #2563eb;background:#eff6ff;" +
-            "margin:1.25em 0;padding:14px 20px;color:#1e40af;border-radius:0 10px 10px 0}" +
+            "margin:1.25em 0;padding:14px 20px;color:#1e40af}" +
             "blockquote p{margin:0}" +
             "ul,ol{padding-left:1.75em;margin:.5em 0 1em}" +
             "li{margin:.3em 0}" +
             "li>ul,li>ol{margin:.25em 0}" +
             "table{border-collapse:collapse;width:100%;margin:1.25em 0;" +
-            "border-radius:10px;overflow:hidden;border:1px solid #e2e8f0}" +
+            "overflow:hidden;border:1px solid #e2e8f0}" +
             "thead{background:#f8fafc}" +
             "th{padding:10px 16px;text-align:left;font-weight:600;color:#475569;" +
             "font-size:.875em;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0}" +
@@ -124,10 +124,10 @@ namespace MarkTogether.Client
             "tr:last-child td{border-bottom:none}" +
             "tbody tr:hover td{background:#f8fafc}" +
             "hr{border:none;border-top:1px solid #e2e8f0;margin:2em 0}" +
-            "img{max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.1);margin:.5em 0}" +
+            "img{max-width:100%;box-shadow:0 2px 12px rgba(0,0,0,.1);margin:.5em 0}" +
             "::-webkit-scrollbar{width:6px;height:6px}" +
             "::-webkit-scrollbar-track{background:transparent}" +
-            "::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}" +
+            "::-webkit-scrollbar-thumb{background:#cbd5e1}" +
             "::-webkit-scrollbar-thumb:hover{background:#94a3b8}" +
             "@media print{body{padding:0;max-width:none}" +
             "pre,blockquote,table{page-break-inside:avoid}" +
@@ -270,8 +270,6 @@ namespace MarkTogether.Client
             lblPermissionBadge.Text = label;
             lblPermissionBadge.ForeColor = fg;
             lblPermissionBadge.BackColor = bg;
-            UiFactory.ApplyRoundedRegion(lblPermissionBadge, AppTheme.CornerRadius);
-
             bool canEdit = _permission == "owner" || _permission == "editor";
             txtRawMarkdown.ReadOnly = !canEdit;
             btnSave.Enabled = canEdit;
@@ -321,10 +319,6 @@ namespace MarkTogether.Client
             UiFactory.StyleGhostButton(btnCommentRefresh);
             UiFactory.StylePrimaryButton(btnAiSend);
 
-            UiFactory.ApplyRoundedRegion(lblPermissionBadge, AppTheme.CornerRadius);
-            lblPermissionBadge.Resize += (s, ev) =>
-                UiFactory.ApplyRoundedRegion(lblPermissionBadge, AppTheme.CornerRadius);
-
             // Bottom divider for section headers (editor & preview labels)
             lblRaw.Paint += (s, e) =>
             {
@@ -340,10 +334,6 @@ namespace MarkTogether.Client
             // Layout toolbar buttons (right-aligned chain)
             pnlHeader.Resize += (s, e) => LayoutToolbarButtons();
             LayoutToolbarButtons();
-
-            // Style chat input border
-            txtChatInput.Resize += (s, e) => UiFactory.ApplyRoundedRegion(txtChatInput, AppTheme.CornerRadius);
-            UiFactory.ApplyRoundedRegion(txtChatInput, AppTheme.CornerRadius);
 
             // Modern flat tab headers with primary underline for selected tab
             tabSide.DrawMode = System.Windows.Forms.TabDrawMode.OwnerDrawFixed;
@@ -387,11 +377,6 @@ namespace MarkTogether.Client
             cmbAutosaveInterval.Location = new System.Drawing.Point(x, top);
             x -= gap + chkPeriodicAutosave.Width;
             chkPeriodicAutosave.Location = new System.Drawing.Point(x, top + 8);
-
-            // Permission badge gần title
-            lblPermissionBadge.Location = new System.Drawing.Point(
-                lblDocTitle.Right + AppTheme.SpaceMd,
-                lblDocTitle.Top + 4);
         }
 
         private void DrawSideTabItem(DrawItemEventArgs e)
