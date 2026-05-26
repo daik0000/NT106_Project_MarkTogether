@@ -367,7 +367,7 @@ namespace MarkTogether.Client
             try
             {
                 _isOpeningDocument = true;
-                ToggleLoadingState(true);
+                UseWaitCursor = true;
                 var opened = await Task.Run(() => SocketClient.Instance.OpenDocument(selectedDoc.docID));
                 OpenDocumentEditor(opened.docID, opened.title, opened.content, opened.permission, opened.revision);
             }
@@ -379,7 +379,7 @@ namespace MarkTogether.Client
             finally
             {
                 _isOpeningDocument = false;
-                ToggleLoadingState(false);
+                UseWaitCursor = false;
             }
         }
 

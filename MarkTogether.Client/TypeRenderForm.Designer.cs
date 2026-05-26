@@ -120,7 +120,7 @@ namespace MarkTogether.Client
             this.lblDocTitle.AutoSize = true;
             this.lblDocTitle.Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold);
             this.lblDocTitle.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(23)))), ((int)(((byte)(42)))));
-            this.lblDocTitle.Location = new System.Drawing.Point(240, 45);
+            this.lblDocTitle.Location = new System.Drawing.Point(240, 56);
             this.lblDocTitle.Margin = new System.Windows.Forms.Padding(6, 0, 6, 0);
             this.lblDocTitle.Name = "lblDocTitle";
             this.lblDocTitle.Size = new System.Drawing.Size(137, 47);
