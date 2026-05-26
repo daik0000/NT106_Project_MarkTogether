@@ -28,6 +28,7 @@ namespace MarkTogether.Shared
             {
                 stream.Write(lenBytes, 0, 4);
                 stream.Write(data, 0, data.Length);
+                stream.Flush();
             }
         }
 

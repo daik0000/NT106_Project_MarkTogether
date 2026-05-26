@@ -120,8 +120,12 @@ Ghi chú môi trường local: có warning `MSB3101` (không ghi được `*.Ass
 
 - Gateway có log tối thiểu theo UTC timestamp + session id + action routing.
 - Gateway log thêm packet type khi forward để debug routing doc-affinity, ví dụ `Forwarding OP_INSERT doc=... -> backend#...`.
+- Gateway có diagnostic tạm quanh receive phía client (`Waiting for client packet`, `Received client packet`, lỗi receive) để debug timeout sau TLS handshake.
 - Gateway tránh đánh dấu active doc stream trước khi packet đầu tiên gửi thành công và khóa thao tác đóng upstream trong lúc đang gửi để giảm race `MobileAuthenticatedStream disposed`.
 - Gateway xử lý việc đổi backend trên cùng socket sau `DOC_LEAVE`: upstream pump cũ không shutdown toàn bộ client session khi chính Gateway chủ động đóng upstream để switch backend.
+- LoginForm không gọi socket login trực tiếp trên UI thread nữa; network connect/login chạy trong background task để tránh WinForms bị đơ khi request timeout.
+- LoginForm dọn socket cũ trước mỗi lần login và disconnect khi login lỗi để tránh dùng lại TLS stream đã stale sau timeout.
+- SocketClient ghi log debug tối thiểu vào `%TEMP%/MarkTogetherClient.log` (connect/TLS/send/receive/timeout, không ghi password/token/payload) để đối chiếu timeout với log LB.
 - Session store có log mode đang dùng (Redis hoặc fallback in-memory).
 - Không log dữ liệu nhạy cảm (không log password, token raw, API key raw).
 

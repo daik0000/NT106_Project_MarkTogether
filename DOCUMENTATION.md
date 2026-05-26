@@ -58,8 +58,10 @@
 |------------|---------|
 | **Client (WinForms)** | Giao diện soạn thảo Markdown chia đôi: editor + preview (WebView2). Quản lý kết nối TCP, gửi op, nhận broadcast. |
 | **Server (Console / Mono service)** | TCP listener, dispatch packet theo `MessageType`, transform OT, persist DB, broadcast. |
+| **Gateway / Load Balancer** | TCP/TLS gateway đứng trước các app server. Terminate TLS từ client, re-encrypt TLS tới app server, route theo `docID` để giữ realtime OT đúng backend. |
 | **Shared** | Định nghĩa `Packet`, `MessageType`, mọi `Payload_*` và `PacketHelper` (length-prefix protocol). |
 | **PostgreSQL** | Lưu trữ persistent: users, documents, document_operations, document_versions, document_shares, sharing_links, chat_messages, document_comments, images, audit_logs, schema_migrations. |
+| **Redis** | Session store dùng chung giữa nhiều app server, giúp token login hợp lệ khi LB route request qua node khác. |
 | **WebView2 (Edge)** | Render Markdown sang HTML phía client (Markdig pipeline + highlight.js). |
 | **Gemini API (tuỳ chọn)** | AI gợi ý: chat, summarize, continue, translate. |
 
@@ -76,6 +78,7 @@
 9. **Image upload** — dedup theo SHA-256, lưu file system + metadata DB, có quota.
 10. **AI suggestion** — gọi Gemini với model do user chọn, API key lưu phía client bằng DPAPI, throttle 1 req/3 s/user.
 11. **Audit logs + persistent sessions** — schema sẵn sàng (`audit_logs`, `user_sessions`).
+12. **Load balancing production** — LB route theo document, hỗ trợ 2+ app servers, Redis shared session, TLS client → LB và LB → app.
 
 ---
 
@@ -101,6 +104,14 @@ flowchart LR
         PROTO[/4-byte length prefix + JSON Packet/]
     end
 
+    subgraph Gateway["MarkTogether.Gateway (optional production LB)"]
+        LB[Gateway TLS Listener]
+        PS[ProxySession per client]
+        RT[GatewayRouter: least-conn + docID affinity]
+        LB --> PS
+        PS --> RT
+    end
+
     subgraph Server["MarkTogether.Server (Console / Mono service)"]
         SS[SocketServer (TcpListener)]
         CH[ClientHandler per connection]
@@ -111,11 +122,13 @@ flowchart LR
     end
 
     DB[(PostgreSQL 13+<br/>marktogether_db)]
+    Redis[(Redis<br/>shared sessions)]
     Storage[(/var/lib/marktogether<br/>image files)]
     Gemini[(Google Gemini API)]
 
     SC <-->|Packet| PROTO
-    PROTO <-->|Packet| CH
+    PROTO <-->|TLS + Packet| LB
+    PS <-->|TLS upstream + Packet| CH
     SS --> CH
     CH --> SM
     CH --> OT
@@ -123,6 +136,7 @@ flowchart LR
     SVC --> REPO
     OT --> REPO
     REPO --> DB
+    SM --> Redis
     SVC --> Storage
     SVC --> Gemini
 ```
@@ -190,6 +204,53 @@ sequenceDiagram
     - Broadcast → raise event → handler dùng `BeginInvoke` để chuyển về UI thread.
   - `Request(...)` đồng bộ → bao bọc bởi `Task.Run(...)` ở các nút lệnh để không freeze UI.
 
+### 2.5. Load Balancer / Gateway production
+
+`LoadBalancing/MarkTogether.Gateway` là gateway tầng ứng dụng cho mô hình nhiều app server. LB vẫn nói đúng protocol của MarkTogether (`4-byte length prefix + JSON Packet`), không phải HTTP reverse proxy.
+
+```mermaid
+flowchart LR
+    C1[Client 1] -->|TLS :5000| LB[MarkTogether.Gateway]
+    C2[Client 2] -->|TLS :5000| LB
+    LB -->|TLS upstream| A1[App Server 1<br/>MarkTogether.Server]
+    LB -->|TLS upstream| A2[App Server 2<br/>MarkTogether.Server]
+    A1 --> DB[(PostgreSQL)]
+    A2 --> DB
+    A1 --> R[(Redis session store)]
+    A2 --> R
+```
+
+Vai trò chính:
+
+- **TLS termination phía client:** client chỉ cấu hình một endpoint LB trong `server.config` (`HOST`, `PORT`, `CERT_THUMB`).
+- **TLS re-encrypt upstream:** LB mở kết nối TLS tới từng app server khi `MARKTOGETHER_LB_UPSTREAM_TLS=true`.
+- **Route request không thuộc document:** login/logout/forgot/list... chọn backend theo least-connections.
+- **Route request có `docID`:** `DOC_OPEN`, `OP_INSERT`, `OP_DELETE`, chat/comment/version/image theo cùng `docID` được giữ cùng một backend để `SessionManager` broadcast realtime trong memory vẫn hoạt động.
+- **Giới hạn active document:** mỗi TCP connection qua Gateway chỉ giữ 1 document active. Client phải đóng editor hiện tại để gửi `DOC_LEAVE` trước khi mở document khác; nếu không Gateway trả lỗi `"Một connection chỉ hỗ trợ 1 tài liệu đang active. Hãy DOC_LEAVE trước."`
+- **Redis shared session:** token login được lưu ở Redis qua `MARKTOGETHER_REDIS_CONNECTION`, nên request auth-sensitive vẫn hợp lệ nếu đi qua backend khác.
+- **Health/failover:** backend bị lỗi connect/TLS sẽ bị đánh dấu unhealthy; document đang active chỉ remap sau `MARKTOGETHER_LB_DOC_REMAP_TIMEOUT_SECONDS` để tránh tách room OT giữa chừng.
+
+Các biến cấu hình LB nằm trong `/etc/marktogether/lb.env`:
+
+```text
+MARKTOGETHER_LB_LISTEN_HOST=0.0.0.0
+MARKTOGETHER_LB_LISTEN_PORT=5000
+MARKTOGETHER_LB_CERT_PATH=/etc/marktogether/certs/lb.pfx
+MARKTOGETHER_LB_CERT_PASSWORD=<LB_PFX_PASSWORD>
+MARKTOGETHER_LB_BACKENDS=<APP1_IP>:5000,<APP2_IP>:5000
+MARKTOGETHER_LB_UPSTREAM_TLS=true
+MARKTOGETHER_LB_HEALTHCHECK_INTERVAL_SECONDS=5
+MARKTOGETHER_LB_DOC_REMAP_TIMEOUT_SECONDS=120
+MARKTOGETHER_LB_CONNECT_TIMEOUT_MS=5000
+```
+
+Điểm cần nhớ khi debug:
+
+- Nếu LB chỉ log `Client TLS established` mà không có `Received client packet`, kiểm client có gửi packet/`PacketHelper.Flush()` và cert pinning.
+- Nếu LB log `Received client packet` nhưng không `Forwarding`, kiểm upstream TLS tới backend bằng `openssl s_client -connect <APP_IP>:5000 -tls1_2`.
+- Nếu login OK nhưng OT không đồng bộ, kiểm LB log `Forwarding OP_INSERT doc=... -> backend#...` và server log `JoinRoom clients=2`, `Broadcast ... targets=1`.
+- Runbook triển khai đầy đủ nằm ở `deploy/LB_DEPLOYMENT.md`.
+
 ---
 
 ## 3. Cấu trúc thư mục
@@ -205,13 +266,25 @@ NT106_Project_MarkTogether/
 │
 ├── deploy/                               # Triển khai production trên VPS
 │   ├── env/
-│   │   └── marktogether.env.example      # Mẫu /etc/marktogether/env
+│   │   ├── marktogether.env.example      # Mẫu /etc/marktogether/env cho app server
+│   │   └── marktogether-lb.env.example   # Mẫu /etc/marktogether/lb.env cho LB
 │   ├── scripts/
 │   │   ├── backup.sh                     # Backup pg_dump
 │   │   ├── deploy-release.sh             # Deploy artefact mới
+│   │   ├── deploy-lb-release.sh          # Deploy artefact LB
 │   │   └── run-migrations.sh             # Chạy migration_v2.sql
 │   └── systemd/
-│       └── marktogether.service          # Unit file Mono service
+│       ├── marktogether.service          # Unit file app server Mono service
+│       └── marktogether-lb.service       # Unit file LB Mono service
+│
+├── LoadBalancing/
+│   └── MarkTogether.Gateway/             # Load balancer / TCP TLS gateway
+│       ├── MarkTogether.Gateway.csproj
+│       ├── Program.cs                     # Entry LB, load config, start listener
+│       ├── GatewayConfig.cs               # Đọc gateway.config/env override
+│       ├── BackendRouting.cs              # Least-connections + docID affinity
+│       ├── ProxySession.cs                # Pump packet client ↔ backend
+│       └── gateway.config.example
 │
 ├── MarkTogether.Shared/                  # DLL dùng chung Client + Server
 │   ├── Shared.csproj
@@ -331,16 +404,17 @@ oá DPAPI
 | **GUI** | Windows Forms | Yêu cầu môn học (mạng + WinForms) |
 | **Render Markdown** | Markdig 1.1.2 + WebView2 (Edge Chromium) | Render Markdown → HTML; WebView hiển thị có syntax highlight |
 | **Syntax highlight** | highlight.js 11.11 (CDN) | Tô màu code block trong preview |
-| **Network** | `System.Net.Sockets.TcpListener` / `TcpClient` | TCP raw, không HTTP |
+| **Network** | `System.Net.Sockets.TcpListener` / `TcpClient`, `SslStream` | TCP raw, không HTTP; TLS 1.2 cho client/app/LB |
 | **Giao thức** | 4-byte little-endian length prefix + UTF-8 JSON `Packet` | Framing đơn giản, đủ tin cậy |
 | **Serialization** | Newtonsoft.Json 13.0.4 | Serialize/deserialize Packet + Payload (kể cả `byte[]` base64) |
 | **Hash mật khẩu** | BCrypt.Net-Next 4.1.0 (workFactor=12) | Salt+stretch chống brute-force |
 | **Database** | PostgreSQL 16 (Docker) hoặc 13+ (local) | Persistent storage |
+| **Session store production** | Redis 7+ | Chia sẻ session token giữa nhiều app server sau LB |
 | **Driver** | Npgsql 4.1.13 | ADO.NET provider |
 | **ORM** | Dapper 2.1.72 | Micro-ORM, parameterized query, snake_case ↔ PascalCase |
 | **Token** | `SecureTokenGenerator` (`RandomNumberGenerator`) cho session token và sharing link | |
 | **AI** | Google Gemini REST API | Chat / summarize / continue / translate; user chọn model, tự nhập API key |
-| **Triển khai** | Mono 5+ (Linux), systemd unit, Docker Compose (Postgres) | Production deploy lên VPS Linux |
+| **Triển khai** | Mono 5+ (Linux), systemd unit, Docker Compose (Postgres), MarkTogether.Gateway LB | Production deploy lên VPS Linux |
 | **Health/Backup** | `pg_isready` healthcheck, `backup.sh` `pg_dump` | Production hardening |
 
 ---
@@ -460,7 +534,7 @@ Kết quả mong đợi: `Build succeeded. 0 Error(s)` cho 3 project (`Shared`, 
 
 ### 5.2. Phía Production (VPS Linux)
 
-> Mô hình tham chiếu trong `deploy/`: **VPS DB** (Docker Postgres) tách khỏi **VPS APP** (Mono).
+> Mô hình tham chiếu trong `deploy/`: **VPS DB/Redis** tách khỏi **VPS APP** (Mono). Khi chạy HA/load balancing, thêm **VPS LB** chạy `MarkTogether.Gateway`; xem runbook chi tiết ở `deploy/LB_DEPLOYMENT.md`.
 
 #### 5.2.1. VPS DB
 
@@ -510,7 +584,45 @@ sudo systemctl status marktogether
 
 Kết quả mong đợi: `Active: active (running)`, log Docker `pg_isready` healthy, port 5000 LISTEN.
 
-#### 5.2.3. Backup định kỳ
+#### 5.2.3. VPS LB / Gateway (production nhiều app server)
+
+Build và đóng gói LB trên máy Windows:
+
+```powershell
+dotnet build MarkTogether.sln -c Release /m:1
+Compress-Archive -Path LoadBalancing\MarkTogether.Gateway\bin\Release\* -DestinationPath lb-release.zip -Force
+```
+
+Trên VPS LB:
+
+```bash
+sudo apt install -y mono-complete unzip
+sudo adduser --system --group --home /opt/marktogether marktogether || true
+sudo mkdir -p /opt/marktogether/lb /opt/marktogether/logs /etc/marktogether/certs /etc/marktogether
+
+sudo unzip -o /tmp/lb-release.zip -d /opt/marktogether/lb
+sudo cp /tmp/lb.pfx /etc/marktogether/certs/lb.pfx
+sudo cp /tmp/marktogether-lb.service /etc/systemd/system/marktogether-lb.service
+sudo cp /tmp/marktogether-lb.env.example /etc/marktogether/lb.env
+
+sudo chown -R marktogether:marktogether /opt/marktogether/lb
+sudo chown root:marktogether /etc/marktogether/lb.env /etc/marktogether/certs/lb.pfx
+sudo chmod 640 /etc/marktogether/lb.env /etc/marktogether/certs/lb.pfx
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now marktogether-lb
+sudo journalctl -u marktogether-lb -f
+```
+
+Client production trỏ tới LB, không trỏ trực tiếp app server:
+
+```text
+HOST=<LB_PUBLIC_IP>
+PORT=5000
+CERT_THUMB=<LB_CERT_SHA1_THUMBPRINT_NO_COLON>
+```
+
+#### 5.2.4. Backup định kỳ
 
 ```bash
 sudo crontab -e
@@ -542,20 +654,36 @@ sudo systemctl start marktogether
 sudo systemctl stop marktogether
 sudo journalctl -u marktogether -f
 
+# Load balancer / Gateway
+sudo systemctl start marktogether-lb
+sudo systemctl stop marktogether-lb
+sudo journalctl -u marktogether-lb -f
+
 # Postgres
 docker logs --tail 100 marktogether-postgres
 docker exec -it marktogether-postgres psql -U marktogether_user -d marktogether_db
 ```
 
-Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm.cs`) trỏ đến `IP_VPS:5000`. Mở firewall TCP/5000 trên VPS APP.
+Client kết nối:
+
+- Mô hình 1 app server: sửa `server.config` trỏ đến `APP_IP:5000`.
+- Mô hình LB: sửa `server.config` trỏ đến `LB_PUBLIC_IP:5000`, cập nhật `CERT_THUMB` theo cert LB.
+
+Firewall production:
+
+- LB mở TCP/5000 cho client.
+- App server chỉ mở TCP/5000 cho IP của LB.
+- DB/Redis chỉ mở 5432/6379 cho IP app server cần thiết.
 
 ### 6.3. Cổng & URL
 
 | Dịch vụ | Port | Truy cập |
 |---------|------|----------|
-| Server TCP | `5000` (mặc định, override bằng `MARKTOGETHER_PORT`) | LAN/WAN |
+| LB TCP/TLS | `5000` (`MARKTOGETHER_LB_LISTEN_PORT`) | Public client endpoint |
+| App Server TCP/TLS | `5000` (mặc định, override bằng `MARKTOGETHER_PORT`) | Chỉ LB hoặc LAN/WAN nếu không dùng LB |
 | PostgreSQL local | `5432` | localhost |
-| PostgreSQL prod | `127.0.0.1:5432` (bind loopback) | Chỉ VPS APP nội bộ |
+| PostgreSQL prod | `5432` | Chỉ app server được allow firewall |
+| Redis prod | `6379` | Chỉ app server được allow firewall |
 | WebView2 preview | `data:` URI (NavigateToString) | Trong process Client |
 | Gemini API | HTTPS `generativelanguage.googleapis.com` | Outbound từ Server |
 
@@ -632,6 +760,7 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
 
 - **Luồng list:** `DOC_LIST` → `DocumentRepository.GetByUserIdWithPermission` (LEFT JOIN `document_shares`) → trả `DocInfo[]`.
 - **Luồng open:** `DOC_OPEN { docID }` → server check permission → `SessionManager.JoinRoom(docId, this)` → reply `DOC_OPEN_Response`.
+- **Luồng leave:** khi đóng `TypeRenderForm`, client gọi `DOC_LEAVE { docID }` để rời room realtime. Với Gateway LB, cần `DOC_LEAVE` xong mới mở document khác trên cùng connection.
 - **Test:** ở `HomeForm`, đổi sort `Mới nhất / Cũ nhất / A→Z / Z→A`. Double-click 1 row.
 - **Kết quả:** danh sách sort đúng; mở doc thấy đúng content.
 
@@ -659,10 +788,20 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
 
 ### 7.9. Realtime collaboration — Operational Transformation
 
+- **Cập nhật OT đợt 2 (26/05/2026):**
+  - Pipeline editor hiện là `TextChanged -> typing debounce -> ClassifyEditCase -> {Typing|BulkInsert|BulkDelete|ReplaceBlock}`.
+  - `TypingMaxCharsPerPacket = 32` chỉ dùng cho typing nhỏ; `BulkMaxCharsPerPacket = 8192` dùng cho paste/delete/replace block; `TypingDebounceMs = 120`.
+  - Gõ tiếng Việt qua Unikey/EVKey được gom bằng debounce thay vì dựa vào WM_IME composition event, vì các bộ gõ này thường phát chuỗi `WM_CHAR` + backspace trung gian.
+  - Paste dài và xóa đoạn dài không còn chia 32 ký tự/gói; replace block gửi delete block rồi insert block, mỗi phần chỉ chunk tiếp khi vượt 8192 ký tự.
+  - Remote apply dùng `SelectedText` theo batch broadcast và chỉ sync `_lastMarkdownText` một lần cuối để giảm số lần clone toàn bộ TextBox.
+  - Khi apply remote op, client lưu `EM_GETFIRSTVISIBLELINE` trước khi đổi `SelectionStart` và restore bằng `EM_LINESCROLL` sau khi apply, tránh user đang đọc/gõ phía trên bị kéo xuống vị trí edit của user khác.
+
 - **Luồng client → server:**
-  1. `txtRawMarkdown_TextChanged` → `TrackRealtimeEditOps` → `ComputeTextDelta` → `QueueOperation`.
-  2. Pending buffer gom ≤ 5 ký tự cùng loại (Insert / Delete). Đổi loại → flush ngay. Idle 250 ms → flush phần còn lại.
-  3. Chunk được **enqueue vào `_pasteChunkQueue`** (không gửi trực tiếp trên UI thread). Background task `_pasteSendTask` gửi tuần tự `OP_INSERT`/`OP_DELETE` kèm `clientRevision` và chờ ACK trước khi tăng revision.
+  1. `HomeForm` truyền `permission` từ `DOC_OPEN` / `DOC_JOIN_CODE` / tạo doc vào `TypeRenderForm`, để editor biết ngay `owner/editor/viewer` trước khi người dùng gõ.
+  2. `txtRawMarkdown_TextChanged` → `TrackRealtimeEditOps` → `ComputeTextDelta` → `QueueOperation`.
+  3. Client chỉ enqueue op khi `_trackRealtimeOps=true`, đã login, có `docID`, và permission là `owner` hoặc `editor`; nếu bị skip sẽ ghi log `[OT] Pending chunk skipped: ...`.
+  4. Pending buffer gom ≤ 32 ký tự cùng loại (Insert / Delete). Đổi loại → flush ngay. Idle 250 ms → flush phần còn lại.
+  5. Chunk được **enqueue vào `_pasteChunkQueue`** (không gửi trực tiếp trên UI thread). Background task `_pasteSendTask` gửi tuần tự `OP_INSERT`/`OP_DELETE` kèm `clientRevision` và chờ ACK trước khi tăng revision.
 - **Server (`ProcessRealtimeOp`):**
   1. RBAC `CanEdit`.
   2. Lấy `DocumentState` (cached trong `DocumentStateManager`).
@@ -674,7 +813,9 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   4. Reply `OK { Message = serverRevision }`.
   5. `BroadcastToRoom` `OP_BROADCAST` (loại trừ chính sender).
 - **Client B (`HandleOpBroadcast`):**
-  - `BeginInvoke` → `_suppressOpTracking=true`, áp op vào `txtRawMarkdown.Text`, giữ caret hợp lý, `_lastMarkdownText = current`.
+  - `BeginInvoke` → flush pending ops trước khi áp broadcast, `_suppressOpTracking=true`, áp op vào `txtRawMarkdown.Text`, giữ caret hợp lý, `_lastMarkdownText = current`.
+  - Lưu và restore first visible line của TextBox khi apply bằng `SelectedText`, nên remote edit ở dưới không làm viewport của user đang ở trên bị kéo xuống.
+  - Cập nhật `_clientRevision = max(_clientRevision, broadcast.clientResivion)` để tránh double-transform ở lần gửi op kế tiếp.
 - **File liên quan:** `TypeRenderForm.cs`, `SocketClient.SendInsertOps/SendDeleteOps`, `ClientHandler.ProcessRealtimeOp`, `OT/DocumentState.cs`, `OT/OTEngine.cs`.
 - **Cách test (2 client):**
   1. Mở Client A & B, share-code rồi join, cùng vào doc.
@@ -686,14 +827,15 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
 - **Lỗi thường gặp & fix:**
   - **Caret nhảy:** kiểm tra `_suppressOpTracking` đã `true` khi apply broadcast; xem `HandleOpBroadcast`.
   - **Server log RBAC denied** dù là editor: kiểm tra `document_shares.permission` (vd. lỗi typo).
-  - **OP > 5 ký tự bị reject:** thuật toán client tự gom ≤ 5; nếu gửi tay (debug) phải tách trước.
+  - **LB không thấy `OP_INSERT` khi gõ:** kiểm `%TEMP%\MarkTogetherClient.log` hoặc file `client_debug_<PID>.log`, tìm `[OT] Pending chunk skipped` để biết client đang thiếu quyền, chưa login, hoặc thiếu state.
+  - **OP > 8192 ký tự bị reject:** bulk path tự tách theo `BulkMaxCharsPerPacket`; nếu gửi tay (debug) phải tách trước.
 
 #### 7.8.1. Async op sender — toàn bộ typing và paste không block UI thread
 
-- **Vấn đề gốc:** `SendCurrentPendingChunk` gọi `SocketClient.SendInsertOps/SendDeleteOps` đồng bộ trên UI thread. Với giới hạn `≤ 5` ký tự/packet, gõ 5 ký tự → 1 round-trip TCP block UI. Trên VPS (RTT 50–200 ms) → typing giật rõ rệt; paste 5000 ký tự → `Not Responding`.
+- **Vấn đề gốc:** `SendCurrentPendingChunk` gọi `SocketClient.SendInsertOps/SendDeleteOps` đồng bộ trên UI thread. Giới hạn hiện tại là `≤ 32` ký tự/packet; gõ nhanh hoặc paste dài được gom chunk lớn hơn để giảm số round-trip.
 - **Kiến trúc hiện tại:** mọi op (typing + paste) đều đi qua **background op sender** duy nhất (`_pasteSendTask`), không có gì gửi đồng bộ trên UI thread.
   - **Typing:** `SendCurrentPendingChunk` enqueue vào `_pasteChunkQueue` rồi `EnsurePasteSenderRunning` — UI thread return ngay.
-  - **Paste dài (`>= 20` ký tự):** `ProcessCmdKey` intercept → `PerformFastPaste` → insert text ngay lên TextBox (UI responsive) → `EnqueuePasteOperations` → sender gửi nền.
+  - **Paste dài (`>= 20` ký tự):** `ProcessCmdKey` intercept → `PerformFastPaste` → insert text ngay lên TextBox (UI responsive) → `EnqueueBulkOp` → sender gửi nền.
   - **Paste ngắn (`< 20` ký tự):** đi theo đường TextBox mặc định → `txtRawMarkdown_TextChanged` → typing path → cũng enqueue như typing thường.
 - **Background sender (`PasteSenderLoop`):**
   - Chạy dưới `Task.Run`, xử lý tuần tự từng entry trong `_pasteChunkQueue`.
@@ -701,10 +843,9 @@ Client kết nối: sửa `server.config` (hoặc trực tiếp trong `LoginForm
   - Tăng `_clientRevision` bằng `Interlocked.Increment` sau mỗi ACK.
   - Khi queue rỗng: task tự exit, `_isPasting = false`.
 - **Ràng buộc giữ nguyên:**
-  - Không sửa `SocketClient.cs`.
-  - Không sửa `ClientHandler.cs`.
-  - Không tăng giới hạn server `5` ký tự/packet.
-- **Đồng bộ revision:** sender xử lý tuần tự → thứ tự enqueue = thứ tự gửi → `_clientRevision` tăng đơn điệu → OT đúng.
+  - `SocketClient.SendInsertOps/SendDeleteOps` dùng timeout 15000 ms cho packet bulk.
+  - Server và client cùng dùng giới hạn `8192` ký tự/packet cho bulk; typing nhỏ vẫn giữ `32`.
+- **Đồng bộ revision:** sender xử lý tuần tự → thứ tự enqueue = thứ tự gửi → `_clientRevision` tăng đơn điệu. Khi nhận `OP_BROADCAST`, client đồng bộ revision theo server để tránh transform lại op đã áp.
 - **Unicode/emoji:** `SafeChunkLength(...)` tránh cắt đôi surrogate pair khi chunk text.
 - **Paste qua chuột phải:** `txtRawMarkdown.ContextMenu = new ContextMenu();` tắt context menu mặc định.
 - **Đóng form:** `OnFormClosing` gọi `FlushPendingEditOperation()` trước (enqueue chunk typing cuối), sau đó `task.Wait(3s)` để sender drain hết queue.
@@ -1032,9 +1173,10 @@ Wire format: `[uint32_le LENGTH][UTF-8 JSON of Packet]`. `LENGTH` đọc trướ
 
 ### 10.3. Đồng bộ revision & conflict resolution
 
+- **Giới hạn packet OT hiện tại:** server nhận tối đa `BulkMaxCharsPerPacket = 8192` ký tự và `MaxOpsPerPacket = 64` op trong một `OP_INSERT`/`OP_DELETE`. Server broadcast `transformedOps` trong một `OP_BROADCAST` thay vì tách từng op.
 - **Revision tăng monotonically** trên server (`DocumentState.ServerRevision`, lock per-doc).
 - Mỗi client lưu `_clientRevision` riêng — tăng mỗi khi tự mình gửi op thành công.
-- Khi nhận `OP_BROADCAST` (op của user khác), client **không tăng** `_clientRevision` của mình; thay vào đó server đã transform sẵn nên client chỉ cần áp tại `pos` đã nhận.
+- Khi nhận `OP_BROADCAST` (op của user khác), client áp op tại `pos` đã transform sẵn và cập nhật `_clientRevision = max(_clientRevision, broadcast.clientResivion)`. Server broadcast `clientResivion = state.ServerRevision` sau khi apply để client không double-transform op đã nhận.
 - Trường hợp client mất gói (mạng chập chờn) nhưng server đã apply → khi client gõ tiếp với `clientRev` cũ, server vẫn transform được (vì có lịch sử trong `document_operations`). Đây là điểm quan trọng phân biệt với "broadcast trần".
 
 ### 10.4. Conflict tiêu biểu (II / ID / DI / DD)
@@ -1123,9 +1265,10 @@ Mọi handler đều log `[RBAC] <ACTION> denied user=... doc=... permission=non
 
 ### 11.6. Bảo mật mạng
 
-- **TLS 1.2 mặc định qua `SslStream`.** Server dùng chứng chỉ PFX cấu hình bằng `TlsCertPath`/`TlsCertPassword`; client hỗ trợ pin thumbprint bằng `CERT_THUMB` trong `server.config` (để trống = dev/demo accept self-signed). thuaậ toaá RSA-3072 + SHA256
-- **Firewall:** chỉ mở 5000 cho IP cần thiết.
-- **Database loopback:** `docker-compose.prod.yml` bind `127.0.0.1:5432` → DB không truy cập từ Internet.
+- **TLS 1.2 mặc định qua `SslStream`.** Server dùng chứng chỉ PFX cấu hình bằng `TlsCertPath`/`TlsCertPassword`; client hỗ trợ pin thumbprint bằng `CERT_THUMB` trong `server.config` (để trống = dev/demo accept self-signed). Production nên dùng RSA 2048/3072 + SHA-256 trở lên.
+- **LB TLS:** client pin certificate của LB, không pin cert app server. LB re-encrypt TLS tới app server khi `MARKTOGETHER_LB_UPSTREAM_TLS=true`.
+- **Firewall:** nếu dùng LB, chỉ LB mở public TCP/5000; app server chỉ allow TCP/5000 từ IP LB; DB/Redis chỉ allow từ IP app server.
+- **Database/Redis:** không expose public. Redis bắt buộc `requirepass`, và app server dùng `MARKTOGETHER_REDIS_CONNECTION=<host>:6379,password=<...>,ssl=false,abortConnect=false`.
 - **App.config secrets:** Khuyến nghị dùng env `MARKTOGETHER_DB_CONNECTION` thay vì commit password. `App.config` hiện đang chứa placeholder `VPS_APP_IP` + password yếu — phải đổi trước khi deploy.
 
 ### 11.7. Điểm yếu đã biết
@@ -1167,7 +1310,7 @@ LoginForm ──(login OK)──▶ HomeForm
 | Source | Target | Truyền gì |
 |--------|--------|-----------|
 | `LoginForm` | `HomeForm` | Không tham số; `SocketClient.Instance` đã chứa `Token`, `UserId`, `Username` |
-| `HomeForm` | `TypeRenderForm` | constructor `(string docId, string title, string content)` |
+| `HomeForm` | `TypeRenderForm` | constructor `(string docId, string title, string content, string permission = null)`; truyền permission sớm để editor không mặc định `viewer` trước khi sync lại `DOC_OPEN` |
 | `HomeForm` | `CreateDocumentForm` | `ShowDialog`; lấy `dlg.DocumentTitle` khi `DialogResult.OK` |
 | `TypeRenderForm` | `ShareDocumentForm` | `(_docId, _shareCode)` |
 | `TypeRenderForm` | `VersionHistoryForm` | `(_docId)` ; output `DocumentWasRestored`, `RestoredContent` |
@@ -1198,9 +1341,14 @@ LoginForm ──(login OK)──▶ HomeForm
 |------|---------|-------------------|
 | `MarkTogether.Shared/Packet.cs` | Định nghĩa **toàn bộ** giao thức | Mọi thay đổi giao thức đều bắt đầu từ đây |
 | `MarkTogether.Shared/PacketHelper.cs` | Send/Receive length-prefix | Bảo đảm framing đúng giữa client/server |
+| `LoadBalancing/MarkTogether.Gateway/Program.cs` | Entry load balancer | Load config, chứng chỉ LB, backend pool và start listener |
+| `LoadBalancing/MarkTogether.Gateway/ProxySession.cs` | Proxy packet client ↔ backend | Terminate TLS client, connect TLS upstream, pump request/reply/broadcast |
+| `LoadBalancing/MarkTogether.Gateway/BackendRouting.cs` | Routing backend | Least-connections cho request thường, docID affinity cho realtime OT |
+| `LoadBalancing/MarkTogether.Gateway/GatewayConfig.cs` | Cấu hình LB | Đọc `gateway.config` và env `MARKTOGETHER_LB_*` |
 | `MarkTogether.Server/Network/SocketServer.cs` | Accept loop | Entry mạng phía server |
 | `MarkTogether.Server/Network/ClientHandler.cs` | Dispatcher tất cả `MessageType` (~1700 dòng) | Trái tim phía server |
 | `MarkTogether.Server/Network/SessionManager.cs` | Token + DocRoom thread-safe | Bảo vệ trạng thái shared |
+| `MarkTogether.Server/Network/RedisSessionStore.cs` | Shared session store | Cho phép nhiều app server xác thực cùng token sau LB |
 | `MarkTogether.Server/OT/OTEngine.cs` | 4 quy tắc transform | Quyết định tính nhất quán realtime |
 | `MarkTogether.Server/OT/DocumentState.cs` | Lock + apply per-doc | Chống race condition khi nhiều người edit |
 | `MarkTogether.Server/Services/AuthService.cs` | BCrypt hash/verify | Bảo mật mật khẩu |
@@ -1213,7 +1361,8 @@ LoginForm ──(login OK)──▶ HomeForm
 | `MarkTogether.Client/TypeRenderForm.cs` | Editor + OT client + chat + comment + AI (~1300 dòng) | UI phức tạp nhất, gắn nhiều handler push |
 | `MarkTogether.Client/HomeForm.cs` | Liệt kê doc, join code, sort, xóa doc | Trang chủ sau login |
 | `MarkTogether.Client/UI/AppTheme.cs`, `UiFactory.cs` | Styling tập trung | Giữ giao diện đồng nhất |
-| `docker-compose.prod.yml` + `deploy/systemd/marktogether.service` | Triển khai production | Tham chiếu cho VPS deploy |
+| `docker-compose.prod.yml` + `deploy/systemd/*.service` + `deploy/env/*.example` | Triển khai production | Tham chiếu cho app server, LB, DB/Redis deploy |
+| `deploy/LB_DEPLOYMENT.md` | Runbook LB chi tiết | Các bước copy artifact, cert, firewall, verify, rollback cho mô hình LB |
 
 ---
 
@@ -1223,6 +1372,11 @@ LoginForm ──(login OK)──▶ HomeForm
 |-----------|------------------------|----------|
 | `[Server] Lỗi accept: Address already in use` | Một process khác đã chiếm port 5000 | `netstat -ano | findstr :5000` (Windows) hoặc `ss -ltnp` (Linux). Kill process hoặc set `MARKTOGETHER_PORT` khác. |
 | Client treo > 15 s rồi `TimeoutException` | Server chết, sai host/port, firewall chặn | Check server log; kiểm `server.config` / hardcode trong `LoginForm.cs`. |
+| LB chỉ log `Client TLS established` | Client handshake TLS OK nhưng chưa gửi/flush packet, hoặc client đang dùng binary cũ | Kiểm `%TEMP%\MarkTogetherClient.log`, đảm bảo `PacketHelper.Send()` có `Flush()`, deploy lại client/LB cùng version. |
+| LB log `Received client packet` nhưng không `Forwarding` | LB kẹt connect/TLS upstream tới app server | Trên LB chạy `timeout 10 openssl s_client -connect <APP_IP>:5000 -tls1_2`; kiểm app service/cert/firewall. |
+| App server local `openssl s_client -connect 127.0.0.1:5000` timeout | Một connection non-TLS/treo đang block TLS handshake hoặc cert PFX lỗi | Kiểm `journalctl -u marktogether -f`; bản mới đưa TLS handshake ra task riêng và có timeout. |
+| Login qua LB OK nhưng OT không sync | Hai client cùng doc không ở cùng backend, chưa join room, hoặc broadcast không tới client | Kiểm LB `Forwarding OP_INSERT doc=... -> backend#...`; server `JoinRoom clients=2`, `Broadcast ... targets=1`; client `client_debug_<PID>.log`. |
+| Session hợp lệ trên server này nhưng lỗi trên server khác | App servers chưa dùng Redis session store chung | Kiểm `MARKTOGETHER_REDIS_CONNECTION`, firewall Redis 6379, `requirepass`. |
 | Đăng nhập trả `"Username không tồn tại"` dù đã đăng ký | Sai DB / chưa chạy migration | `SELECT * FROM users` để xác minh; nếu rỗng → kiểm `MARKTOGETHER_DB_CONNECTION`. |
 | `Npgsql.PostgresException: relation "users" does not exist` | Quên chạy `schema_init.sql` | Chạy script DDL như mục 5.1.2 |
 | `Build fail`: thiếu DLL trong `packages/` | NuGet chưa restore | `nuget restore MarkTogether.sln` |
@@ -1281,7 +1435,7 @@ LoginForm ──(login OK)──▶ HomeForm
 - ✅ Markdown editor + preview live qua WebView2 + Markdig + highlight.js, có debounce.
 - ✅ Sharing đa kênh: theo username, share-code, sharing link với expiry/maxUses, public visibility.
 - ✅ Chat, comment có anchor, version history, image upload (dedup), AI Gemini.
-- ✅ Triển khai production: Docker Postgres + Mono service, systemd, backup, healthcheck, env file, security hardening.
+- ✅ Triển khai production: Docker/PostgreSQL, Redis shared session, Mono app service, MarkTogether.Gateway LB, systemd, backup, healthcheck, env file, security hardening.
 
 ### 16.2. Điểm mạnh
 
@@ -1293,9 +1447,9 @@ LoginForm ──(login OK)──▶ HomeForm
 
 ### 16.3. Vấn đề còn tồn tại / TODO
 
-- TLS 1.2 đã bật bằng `SslStream`; cần cấu hình PFX server cert đúng trước khi chạy.
-- Token in-memory → server restart mất phiên (đã có schema `user_sessions` cho phase nâng cấp).
-- `LoginForm.cs` / `RegisterForm.cs` hardcode `localhost:5000` thay vì đọc `server.config` → cần refactor để đồng bộ với hướng dẫn user.
+- TLS 1.2 đã bật bằng `SslStream`; cần cấu hình PFX server/LB cert đúng trước khi chạy.
+- Session có Redis shared store trong production; in-memory chỉ còn là fallback/dev mode nên server restart sẽ mất phiên nếu không cấu hình Redis.
+- Client production đọc endpoint từ `server.config`; cần đảm bảo rollout client luôn cập nhật `HOST`, `PORT`, `CERT_THUMB` khi đổi LB/cert.
 - `App.config` server commit kèm placeholder secrets → khi clone về dev mới phải nhớ sửa.
 - ✅ ~~Chưa có UI xóa tài liệu~~ — đã thêm context menu + phím Delete trên HomeForm (22/05/2026).
 - Chưa có UI **khôi phục** document đã soft delete (chỉ thao tác DB tay: `UPDATE documents SET deleted_at=NULL WHERE id=...`).
@@ -1367,7 +1521,7 @@ if (op2.pos <= op1.pos)
     op1.pos += op2.text.Length;
 ```
 
-Tương tự II, dịch vị trí xoá. Hiện implementation **chưa** xử lý case insert chen vào giữa range đang xoá; với constraint ≤ 5 ký tự/op nó hiếm khi gây sai lệch lớn.
+Tương tự II, dịch vị trí xoá. Nếu insert chen vào giữa range đang xoá, server rút ngắn `delete.text` đến trước điểm insert để không xoá text vừa được user khác chèn.
 
 #### 17.2.4. Delete vs Delete (DD)
 
@@ -1387,6 +1541,13 @@ Tính phần đã bị op2 xoá trước đó nằm bên trái op1 → trừ và
 
 ### 17.3. Tần suất gửi OP từ client (OP_SEND_Frequency_Algorithm)
 
+- Từ đợt 2, client phân loại delta thành 4 case:
+  - `Typing`: gõ nhỏ sau debounce 120 ms, gom qua pending buffer và chunk tối đa 32 ký tự.
+  - `BulkInsert`: paste/insert lớn, enqueue chunk tối đa 8192 ký tự.
+  - `BulkDelete`: xóa selection lớn, enqueue chunk tối đa 8192 ký tự tại cùng `basePos`.
+  - `ReplaceBlock`: enqueue `BulkDelete` rồi `BulkInsert`; thông thường tối đa 2 packet nếu mỗi phần ≤ 8192 ký tự.
+- IME tiếng Việt không được xử lý bằng WM_IME composition event; debounce lấy delta cuối cùng giữa baseline đầu burst và text hiện tại, tránh broadcast chuỗi xóa rồi ghi lại cho remote.
+
 - Pending buffer: `(pendingType, pendingStartPos, pendingText)`.
 - Mỗi `TextChanged`:
   1. Tính `delta = ComputeTextDelta(old, new)` (longest common prefix / suffix).
@@ -1395,17 +1556,17 @@ Tính phần đã bị op2 xoá trước đó nằm bên trái op1 → trừ và
 - `QueueOperation`:
   - Nếu pending khác loại → flush ngay.
   - Nếu pending cùng loại nhưng không liền mạch (vd insert ở vị trí xa hơn) → flush + bắt đầu pending mới.
-  - Merge thành công → kiểm `pendingText.Length >= 5` → cắt chunk 5 ký tự gửi `OP_INSERT`/`OP_DELETE`. Lặp đến khi < 5.
-- `_opFlushTimer` 250 ms reset mỗi lần queue → khi user dừng gõ ≥ 250 ms, phần còn lại < 5 cũng được gửi.
-- **Bắt buộc flush** khi: đổi loại op, save, leave, close form.
+  - Merge thành công → kiểm `pendingText.Length >= 32` → cắt chunk 32 ký tự gửi `OP_INSERT`/`OP_DELETE`. Lặp đến khi < 32.
+- `_opFlushTimer` 250 ms reset mỗi lần queue → khi user dừng gõ ≥ 250 ms, phần còn lại < 32 cũng được gửi.
+- **Bắt buộc flush** khi: đổi loại op, trước khi áp `OP_BROADCAST`, save, leave, close form.
 
 Tần suất ước lượng (ký tự / giây = `r`):
 
 ```
-sendFrequency ≈ max(r/5, 1/0.25) ≈ max(r/5, 4) requests/s
+sendFrequency ≈ max(r/32, 1/0.25) ≈ max(r/32, 4) requests/s
 ```
 
-→ Gõ 60 wpm (~5 ký/s) → ~ 4-5 packet/s.
+→ Gõ 60 wpm (~5 ký/s) → chủ yếu flush theo idle/timer, ít packet hơn khi paste hoặc gõ liên tục.
 
 ### 17.4. Race condition tránh được nhờ thiết kế
 

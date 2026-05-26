@@ -16,6 +16,8 @@ namespace MarkTogether.Client
         private bool _isLoadingDocuments;
         private bool _isOpeningDocument;
         private List<DocInfo> _allDocuments = new List<DocInfo>();
+        private TypeRenderForm _activeEditor;
+        private string _activeEditorDocId;
 
         public HomeForm()
         {
@@ -41,10 +43,8 @@ namespace MarkTogether.Client
                     ev.Graphics.DrawLine(pen, 0, pnlHeader.Height - 1, pnlHeader.Width, pnlHeader.Height - 1);
             };
 
-            // pnlJoin: rounded region + focus-aware border (single Paint handler, không dùng StyleAsCard để tránh double-paint)
+            // pnlJoin: focus-aware square border (single Paint handler, không dùng StyleAsCard để tránh double-paint)
             pnlJoin.BackColor = AppTheme.Surface;
-            UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
-            pnlJoin.Resize += (s, ev) => UiFactory.ApplyRoundedRegion(pnlJoin, AppTheme.CornerRadius);
             txtJoinCode.GotFocus += (s, ev) => { pnlJoin.Tag = "focus"; pnlJoin.Invalidate(); };
             txtJoinCode.LostFocus += (s, ev) => { pnlJoin.Tag = null; pnlJoin.Invalidate(); };
             pnlJoin.Paint += (s, ev) =>
@@ -102,6 +102,29 @@ namespace MarkTogether.Client
         {
             if (listDocuments.SelectedItems.Count == 0) return null;
             return listDocuments.SelectedItems[0].Tag as DocInfo;
+        }
+
+        private bool CanOpenAnotherDocument(string requestedDocId = null)
+        {
+            if (_activeEditor == null || _activeEditor.IsDisposed)
+            {
+                _activeEditor = null;
+                _activeEditorDocId = null;
+                return true;
+            }
+
+            if (_activeEditor.WindowState == FormWindowState.Minimized)
+                _activeEditor.WindowState = FormWindowState.Normal;
+            _activeEditor.Activate();
+            _activeEditor.BringToFront();
+
+            string message = string.Equals(_activeEditorDocId, requestedDocId, StringComparison.OrdinalIgnoreCase)
+                ? "Tài liệu này đang được mở trong cửa sổ soạn thảo."
+                : "Mỗi kết nối chỉ mở được một tài liệu. Hãy đóng cửa sổ soạn thảo đang mở trước khi mở tài liệu khác.";
+
+            MessageBox.Show(message, "Tài liệu đang mở",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return false;
         }
 
         private async Task DeleteSelectedDocumentAsync()
@@ -252,6 +275,8 @@ namespace MarkTogether.Client
         // ═══════════════════════════════════════════════════════════
         private async void btnCreateDocument_Click(object sender, EventArgs e)
         {
+            if (!CanOpenAnotherDocument()) return;
+
             using (var dlg = new CreateDocumentForm())
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return;
@@ -260,7 +285,7 @@ namespace MarkTogether.Client
                     ToggleLoadingState(true);
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(dlg.DocumentTitle));
                     await LoadDocumentsAsync();
-                    OpenDocumentEditor(created.docID, created.title, created.content);
+                    OpenDocumentEditor(created.docID, created.title, created.content, "owner", created.revision);
                 }
                 catch (Exception ex)
                 {
@@ -276,6 +301,8 @@ namespace MarkTogether.Client
 
         private async void btnImportMd_Click(object sender, EventArgs e)
         {
+            if (!CanOpenAnotherDocument()) return;
+
             using (var openDialog = new OpenFileDialog())
             {
                 openDialog.Title = "Chọn file Markdown để import";
@@ -299,7 +326,7 @@ namespace MarkTogether.Client
                     string title = Path.GetFileNameWithoutExtension(filePath);
                     var created = await Task.Run(() => SocketClient.Instance.CreateDocument(title, content));
                     await LoadDocumentsAsync();
-                    OpenDocumentEditor(created.docID, created.title, created.content);
+                    OpenDocumentEditor(created.docID, created.title, created.content, "owner", created.revision);
                 }
                 catch (Exception ex)
                 {
@@ -335,12 +362,14 @@ namespace MarkTogether.Client
                 return;
             }
 
+            if (!CanOpenAnotherDocument(selectedDoc.docID)) return;
+
             try
             {
                 _isOpeningDocument = true;
-                ToggleLoadingState(true);
+                UseWaitCursor = true;
                 var opened = await Task.Run(() => SocketClient.Instance.OpenDocument(selectedDoc.docID));
-                OpenDocumentEditor(opened.docID, opened.title, opened.content);
+                OpenDocumentEditor(opened.docID, opened.title, opened.content, opened.permission, opened.revision);
             }
             catch (Exception ex)
             {
@@ -350,18 +379,30 @@ namespace MarkTogether.Client
             finally
             {
                 _isOpeningDocument = false;
-                ToggleLoadingState(false);
+                UseWaitCursor = false;
             }
         }
 
-        private void OpenDocumentEditor(string docId, string title, string content)
+        private void OpenDocumentEditor(string docId, string title, string content, string permission = null, int revision = 0)
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
                 MessageBox.Show("Không thể mở tài liệu (thiếu mã ID).", "Lỗi");
                 return;
             }
-            var editor = new TypeRenderForm(docId, title, content);
+            if (!CanOpenAnotherDocument(docId)) return;
+
+            var editor = new TypeRenderForm(docId, title, content, permission, revision);
+            _activeEditor = editor;
+            _activeEditorDocId = docId;
+            editor.FormClosed += (s, e) =>
+            {
+                if (ReferenceEquals(_activeEditor, editor))
+                {
+                    _activeEditor = null;
+                    _activeEditorDocId = null;
+                }
+            };
             editor.Show(this);
         }
 
@@ -403,6 +444,8 @@ namespace MarkTogether.Client
         // ═══════════════════════════════════════════════════════════
         private async void btnJoinCode_Click(object sender, EventArgs e)
         {
+            if (!CanOpenAnotherDocument()) return;
+
             string code = (txtJoinCode.Text ?? "").Trim();
             if (string.IsNullOrEmpty(code))
             {
@@ -423,7 +466,7 @@ namespace MarkTogether.Client
                 }
                 txtJoinCode.Clear();
                 await LoadDocumentsAsync();
-                OpenDocumentEditor(resp.docID, resp.title, resp.content);
+                OpenDocumentEditor(resp.docID, resp.title, resp.content, resp.permission, resp.revision);
             }
             catch (Exception ex)
             {

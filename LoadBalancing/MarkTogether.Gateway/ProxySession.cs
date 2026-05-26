@@ -62,14 +62,22 @@ namespace MarkTogether.Gateway
                     Packet packet;
                     try
                     {
+                        Log("Waiting for client packet.");
                         packet = PacketHelper.Receive(_clientStream);
                     }
-                    catch (IOException)
+                    catch (IOException ioEx)
                     {
+                        Log("Client packet receive ended: " + ioEx.Message);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("Client packet receive failed: " + ex.GetType().Name + ": " + ex.Message);
                         break;
                     }
 
                     if (packet == null) break;
+                    Log($"Received client packet: {packet.Type} requestId={packet.RequestId}");
                     string docId = TryExtractDocId(packet);
 
                     bool isLeaveDoc = packet.Type == MessageType.DOC_LEAVE && !string.IsNullOrWhiteSpace(docId);
@@ -218,7 +226,16 @@ namespace MarkTogether.Gateway
                             tcp.GetStream(),
                             false,
                             (sender, cert, chain, errors) => true);
-                        ssl.AuthenticateAsClient(node.Endpoint.Host, null, SslProtocols.Tls12, false);
+                        Log($"Backend TLS handshake start (#{backendIndex}) {node.Endpoint}");
+                        using (var timeout = new Timer(_ =>
+                        {
+                            try { tcp.Close(); } catch { }
+                        }, null, _config.UpstreamConnectTimeoutMs, Timeout.Infinite))
+                        {
+                            ssl.AuthenticateAsClient(node.Endpoint.Host, null, SslProtocols.Tls12, false);
+                            timeout.Change(Timeout.Infinite, Timeout.Infinite);
+                        }
+                        Log($"Backend TLS handshake established (#{backendIndex}) {node.Endpoint}");
                         upstream = ssl;
                     }
                     else

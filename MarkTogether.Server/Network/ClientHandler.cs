@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using MarkTogether.Server.Database.Models;
 using MarkTogether.Server.Database.Repositories;
@@ -22,9 +23,12 @@ namespace MarkTogether.Server.Network
     /// </summary>
     public class ClientHandler
     {
+        private const int TlsHandshakeTimeoutMs = 10000;
+
         private readonly TcpClient _tcpClient;
         private readonly Stream _stream;
         private readonly X509Certificate2 _serverCert;
+        private readonly string _remoteAddress;
         private string _token;
         private int _userId = -1;
         private string _username;
@@ -36,17 +40,38 @@ namespace MarkTogether.Server.Network
         public string Username => _username;
         public string Token => _token;
 
-        public ClientHandler(TcpClient tcpClient, X509Certificate2 serverCert)
+        public ClientHandler(TcpClient tcpClient, X509Certificate2 serverCert, string remoteAddress = null)
         {
             _tcpClient = tcpClient;
             _serverCert = serverCert;
+            _remoteAddress = string.IsNullOrWhiteSpace(remoteAddress) ? "unknown" : remoteAddress;
 
+            _tcpClient.ReceiveTimeout = TlsHandshakeTimeoutMs;
+            _tcpClient.SendTimeout = TlsHandshakeTimeoutMs;
             var ssl = new SslStream(tcpClient.GetStream(), false);
-            ssl.AuthenticateAsServer(
-                _serverCert,
-                false,
-                SslProtocols.Tls12,
-                false);
+
+            ssl.ReadTimeout = TlsHandshakeTimeoutMs;
+            ssl.WriteTimeout = TlsHandshakeTimeoutMs;
+
+            Console.WriteLine($"[Handler] TLS handshake start: {_remoteAddress}");
+            using (var timeout = new Timer(_ =>
+            {
+                try { tcpClient.Close(); } catch { }
+            }, null, TlsHandshakeTimeoutMs, Timeout.Infinite))
+            {
+                ssl.AuthenticateAsServer(
+                    _serverCert,
+                    false,
+                    SslProtocols.Tls12,
+                    false);
+                timeout.Change(Timeout.Infinite, Timeout.Infinite);
+            }
+
+            _tcpClient.ReceiveTimeout = 0;
+            _tcpClient.SendTimeout = 0;
+            ssl.ReadTimeout = Timeout.Infinite;
+            ssl.WriteTimeout = Timeout.Infinite;
+            Console.WriteLine($"[Handler] TLS handshake established: {_remoteAddress}");
 
             _stream = ssl;
         }
@@ -349,6 +374,9 @@ namespace MarkTogether.Server.Network
             string shareCode = DocumentPermissionService.IsOwner(permission) ? document.ShareCode : null;
 
             SessionManager.JoinRoom(docId, this);
+
+            // Prewarm OT state so the first edit does not pay the initialization round-trip.
+            DocumentStateManager.GetOrCreate(docId);
 
             Reply(packet, MessageType.DOC_OPEN, new Payload_DOC_OPEN_Response
             {
@@ -1112,26 +1140,37 @@ namespace MarkTogether.Server.Network
                 return;
             }
 
+            const int BulkMaxCharsPerPacket = 8192;
+            const int MaxOpsPerPacket = 64;
+
             int charCount = (ops ?? new List<EditOpItem>()).Sum(op => op?.text?.Length ?? 0);
-            if (charCount > 5)
+            if (charCount > BulkMaxCharsPerPacket)
             {
-                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa 5 ký tự.");
+                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa {BulkMaxCharsPerPacket} ký tự.");
                 return;
             }
 
             // [OT] Lấy/tạo state cho document này
+            if ((ops?.Count ?? 0) > MaxOpsPerPacket)
+            {
+                ReplyError(packet, $"OP_{opType.ToUpper()} chỉ được chứa tối đa {MaxOpsPerPacket} op.");
+                return;
+            }
+
             var state = DocumentStateManager.GetOrCreate(docId);
 
+            int currentClientRev = clientRevision;
             var transformedOps = new List<EditOpItem>();
             foreach (var op in ops ?? new List<EditOpItem>())
             {
                 Console.WriteLine($"[OT] {opType.ToUpper()} user={currentUserId} " +
-                    $"clientRev={clientRevision} serverRev={state.ServerRevision} " +
+                    $"clientRev={currentClientRev} serverRev={state.ServerRevision} " +
                     $"pos={op.pos} text='{op.text?.Replace("\n", "\\n").Replace("\r", "\\r")}'" );
 
                 // [OT] Transform op against concurrent server ops, persist vào DB
-                var transformedOp = state.TransformAndApply(op, opType, clientRevision, currentUserId);
+                var transformedOp = state.TransformAndApply(op, opType, currentClientRev, currentUserId);
                 transformedOps.Add(transformedOp);
+                currentClientRev = state.ServerRevision;
 
                 Console.WriteLine($"[OT] {opType.ToUpper()} transformed pos={transformedOp.pos} " +
                     $"newServerRev={state.ServerRevision}");
@@ -1140,8 +1179,8 @@ namespace MarkTogether.Server.Network
             // Gửi ACK về cho client kèm serverRevision mới nhất
             Reply(packet, MessageType.OK, new Payload_OK { Message = state.ServerRevision.ToString() });
 
-            // Broadcast từng op đã transform cho các client khác trong room
-            foreach (var tOp in transformedOps)
+            // Broadcast cả batch đã transform để client apply một lần.
+            if (transformedOps.Count > 0)
             {
                 var broadcast = new Payload_OP_BROADCAST
                 {
@@ -1150,7 +1189,7 @@ namespace MarkTogether.Server.Network
                     userID = currentUserId,
                     username = _username,
                     opType = opType,
-                    ops = new List<EditOpItem> { tOp }
+                    ops = transformedOps
                 };
                 SessionManager.BroadcastToRoom(docId, Packet.Create(MessageType.OP_BROADCAST, broadcast), exclude: this);
             }

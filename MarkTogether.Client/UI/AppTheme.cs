@@ -7,7 +7,7 @@ namespace MarkTogether.Client.UI
 {
     /// <summary>
     /// Design system tập trung — toàn bộ form trong app dùng các giá trị ở đây
-    /// để đảm bảo nhất quán về màu sắc, typography, spacing, bo góc.
+    /// để đảm bảo nhất quán về màu sắc, typography và spacing.
     /// </summary>
     public static class AppTheme
     {
@@ -84,9 +84,9 @@ namespace MarkTogether.Client.UI
         public const int InputHeight = 38;
         public const int ButtonHeight = 40;
         public const int ButtonHeightSmall = 32;
-        public const int CornerRadius = 8;
-        public const int CornerRadiusLg = 12;
-        public const int CornerRadiusSm = 6;
+        public const int CornerRadius = 0;
+        public const int CornerRadiusLg = 0;
+        public const int CornerRadiusSm = 0;
         public const int ToolbarHeight = 56;
 
         // ─── Setup chung cho mọi Form ─────────────────────────────
