@@ -1,11 +1,11 @@
-﻿# MarkTogether LB Deployment Guide (Detailed Runbook)
+# MarkTogether LB Deployment Guide (Detailed Runbook)
 
 Tai lieu nay huong dan deploy mo hinh LB + 2 app servers + Redis session store cho MarkTogether.
 
 ## 0) Muc tieu va mo hinh
 
 Muc tieu:
-- Client ket noi vao LB duy nhat: `209.97.164.211:5000`.
+- Client ket noi vao LB duy nhat: `<LB_IP>:5000`.
 - LB route request theo `docID` de giu cung mot document tren cung backend.
 - Request khong lien quan document (login/logout/forgot...) phan phoi theo least-connections.
 - Session dang nhap duoc chia se qua Redis de hop le tren nhieu app servers.
@@ -18,7 +18,7 @@ Muc tieu:
 Thay toan bo gia tri mau ben duoi:
 
 ```text
-LB_PUBLIC_IP=209.97.164.211
+LB_IP=<lb-server-ip>
 APP1_IP=<app-server-1-ip>
 APP2_IP=<app-server-2-ip>    # neu chua co thi de trong va bo qua buoc APP2
 DB_REDIS_IP=<db-redis-server-ip>
@@ -30,6 +30,7 @@ APP_PFX_PASSWORD=<password-pfx>
 ```
 
 Luu y:
+- Cac placeholder dang `<...>` can duoc thay bang IP/secret that cua moi server truoc khi chay.
 - Hien tai neu ban moi co 1 app server, van deploy duoc voi `APP1_IP`.
 - Sau nay them `APP2_IP` chi can update `MARKTOGETHER_LB_BACKENDS` va firewall.
 
@@ -159,7 +160,7 @@ sudo systemctl status marktogether --no-pager
 ### 4.5 Firewall app
 
 ```bash
-sudo ufw allow from 209.97.164.211 to any port 5000 proto tcp
+sudo ufw allow from <LB_IP> to any port 5000 proto tcp
 sudo ufw deny 5000/tcp
 ```
 
@@ -174,7 +175,7 @@ Lam y chang APP1:
 
 Sau do update LB backend pool (Buoc 6.4).
 
-## 6) Deploy LB tren VPS `209.97.164.211`
+## 6) Deploy LB tren VPS `<LB_IP>`
 
 ### 6.1 Chuan bi runtime + thu muc
 
@@ -189,10 +190,10 @@ sudo mkdir -p /opt/marktogether/lb /opt/marktogether/logs /etc/marktogether/cert
 
 Tu may local:
 ```bash
-scp lb-release.zip user@209.97.164.211:/tmp/
-scp <LB_PFX_PATH_LOCAL> user@209.97.164.211:/tmp/lb.pfx
-scp deploy/env/marktogether-lb.env.example user@209.97.164.211:/tmp/marktogether-lb.env.example
-scp deploy/systemd/marktogether-lb.service user@209.97.164.211:/tmp/marktogether-lb.service
+scp lb-release.zip user@<LB_IP>:/tmp/
+scp <LB_PFX_PATH_LOCAL> user@<LB_IP>:/tmp/lb.pfx
+scp deploy/env/marktogether-lb.env.example user@<LB_IP>:/tmp/marktogether-lb.env.example
+scp deploy/systemd/marktogether-lb.service user@<LB_IP>:/tmp/marktogether-lb.service
 ```
 
 Tren LB:
@@ -267,7 +268,7 @@ AABBCCDD...
 Sua file `MarkTogether.Client/server.config`:
 
 ```text
-HOST=209.97.164.211
+HOST=<LB_IP>
 PORT=5000
 CERT_THUMB=<LB_CERT_THUMBPRINT_NO_COLON>
 ```
