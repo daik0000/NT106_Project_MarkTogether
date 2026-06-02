@@ -269,12 +269,95 @@ User B xóa tại pos 3     ──┘
 - **Delete vs Insert**: nếu insert trước vị trí delete → dịch pos sang phải.
 - **Delete vs Delete**: tính phần overlap, trim text bị xóa cho phù hợp.
 
+
+## Cryptography & Security 
+
+### Password Hashing
+- **Algorithm**: BCrypt
+- **Work Factor**: 12 (adaptive cost factor)
+- **Purpose**: Bcrypt tự động salt và hash password, cung cấp bảo vệ tốt nhất chống brute-force attacks
+- **Implementation**: Sử dụng thư viện `BCrypt.Net-Next v4.1.0`
+
+### Data Integrity
+- **Algorithm**: SHA-256
+- **Usage**: Hash cho hình ảnh (image verification)
+- **Implementation**: `System.Security.Cryptography.SHA256`
+
+### Transport Security
+- **Protocol**: TLS 1.2+
+- **Certificate**: Self-signed certificates cho LAN/WAN demo
+- **Purpose**: Mã hóa dữ liệu truyền giữa client-server và server-load-balancer
+
+### Authentication Token
+- **Generator**: `SecureTokenGenerator` - dùng `System.Security.Cryptography.RNGCryptoServiceProvider`
+- **Purpose**: Tạo token ngẫu nhiên an toàn cho session quản lý
+
+### Share Code Generation
+- **Generator**: `ShareCodeGenerator` - dùng cryptographic randomness
+- **Purpose**: Tạo mã chia sẻ document an toàn và không dự đoán được
+
 ---
 
-## Git Branches
+## LAN/WAN Demo Setup 
 
-| Branch | Mô tả |
-|--------|-------|
-| `master` | Nhánh ổn định ban đầu |
-| `features/type_and_render` | Tính năng soạn thảo + preview Markdown |
-| `features/collab-realtime` | Cộng tác thời gian thực + OT |
+### Architecture
+```
+Client A/B (LAN hoặc Internet)
+        |
+        | TLS, port 5000
+        v
+Load Balancer (0.0.0.0:5000)
+        |
+        | TLS upstream
+        +--> App Server #1 (127.0.0.1:5101)
+        +--> App Server #2 (127.0.0.1:5102)
+              |
+              +--> PostgreSQL (127.0.0.1:15432)
+              +--> Redis (127.0.0.1:16379)
+```
+
+### Deployment Options
+
+#### 1. LAN Demo (Local Network)
+- **Load Balancer**: Công khai trên LAN (0.0.0.0:5000)
+- **Backend Services**: Chỉ bind local (127.0.0.1)
+- **Client Connection**: Dùng IP LAN của máy chạy LB (ví dụ: `192.168.1.10:5000`)
+- **Certificates**: Self-signed, tạo bằng OpenSSL
+
+**Hướng dẫn LAN Demo:**
+- Xem chi tiết tại [deploy/LAN_DEMO.md](deploy/LAN_DEMO.md)
+- Chạy script PowerShell tự động
+- Hỗ trợ load balancing giữa 2 app servers
+
+#### 2. WAN Demo (Internet)
+- **Load Balancer**: Công khai trên Internet (0.0.0.0:5000)
+- **Certificate**: Cấp từ Let's Encrypt hoặc CA tin cậy
+- **Client Connection**: Dùng domain name hoặc public IP
+- **Security**: Firewall rules để chỉ cho phép ports 5000 (app) và 5432 (nếu cần)
+
+#### 3. Production Deployment
+- **Reverse Proxy**: Nginx hoặc Azure Application Gateway
+- **Load Balancing**: Kubernetes, Azure App Service, hoặc Docker Swarm
+- **Database**: Managed PostgreSQL (Azure Database for PostgreSQL)
+- **Cache**: Azure Cache for Redis
+- **Certificates**: Tự động renewal từ Let's Encrypt qua reverse proxy
+- **Monitoring**: Application Insights, Prometheus/Grafana
+
+### Configuration Files
+- **LAN Demo Environment**: `deploy/env/lan-demo.*.env.example`
+- **Production Environment**: `deploy/env/marktogether.env.example`
+- **Client Config**: `MarkTogether.Client/server.config.lan.example`
+- **Docker Compose**: `docker-compose.lan-demo.yml`
+
+### Build & Run
+```powershell
+# Build Release
+dotnet build MarkTogether.sln -c Release /m:1
+
+# LAN Demo (Windows PowerShell)
+./deploy/scripts/lan-demo-start-db.ps1
+./deploy/scripts/lan-demo-create-certs.ps1
+./deploy/scripts/lan-demo-lb.ps1
+./deploy/scripts/lan-demo-server1.ps1
+./deploy/scripts/lan-demo-server2.ps1
+```
