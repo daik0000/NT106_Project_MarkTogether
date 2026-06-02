@@ -1,0 +1,11 @@
+# Copy this file to MarkTogether.Client/bin/Release/server.config
+# or edit MarkTogether.Client/server.config before building the client.
+#
+# HOST must be the LAN IP of the machine running the LB, not 127.0.0.1
+# if the client runs on another computer.
+HOST=192.168.1.10
+PORT=5000
+
+# Put the SHA1 thumbprint of certs/lb.pfx here, without colons.
+# For quick LAN demo only, leave empty to accept any LB cert.
+CERT_THUMB=

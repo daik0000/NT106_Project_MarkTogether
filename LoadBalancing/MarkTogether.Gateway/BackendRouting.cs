@@ -112,10 +112,10 @@ namespace MarkTogether.Gateway
 
             lock (_docLock)
             {
-                if (_docRoutes.TryGetValue(docId, out var existing))
+                if (_docRoutes.TryGetValue(docId, out var existing)) // _______________
                 {
                     var node = GetNode(existing.BackendIndex);
-                    if (node != null && node.IsHealthy)
+                    if (node != null && node.IsHealthy) // nếu đã có map 
                     {
                         return new RoutingDecision { Success = true, BackendIndex = existing.BackendIndex };
                     }
@@ -131,7 +131,7 @@ namespace MarkTogether.Gateway
                         };
                     }
 
-                    int remapped = SelectRendezvousBackend(docId);
+                    int remapped = SelectRendezvousBackend(docId); // map nếu chưa có map 
                     if (remapped < 0)
                     {
                         return new RoutingDecision

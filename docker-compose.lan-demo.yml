@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: marktogether-lan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: marktogether_db
+      POSTGRES_USER: marktogether_user
+      POSTGRES_PASSWORD: marktogether_demo_123
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - marktogether_lan_pg_data:/var/lib/postgresql/data
+      - ./MarkTogether.Server/Database/Scripts/schema_init.sql:/docker-entrypoint-initdb.d/01_schema_init.sql:ro
+      - ./MarkTogether.Server/Database/Scripts/migration_v2.sql:/docker-entrypoint-initdb.d/02_migration_v2.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marktogether_user -d marktogether_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: marktogether-lan-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "marktogether_demo_123"]
+    ports:
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - marktogether_lan_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "marktogether_demo_123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  marktogether_lan_pg_data:
+  marktogether_lan_redis_data:

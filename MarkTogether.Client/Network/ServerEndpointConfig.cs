@@ -16,6 +16,7 @@ namespace MarkTogether.Client.Network
 
             if (!File.Exists(path))
             {
+                ApplyEnvOverrides(cfg);
                 return cfg;
             }
 
@@ -50,7 +51,29 @@ namespace MarkTogether.Client.Network
                 }
             }
 
+            ApplyEnvOverrides(cfg);
             return cfg;
+        }
+
+        private static void ApplyEnvOverrides(ServerEndpointConfig cfg)
+        {
+            string host = Environment.GetEnvironmentVariable("MARKTOGETHER_CLIENT_HOST");
+            if (!string.IsNullOrWhiteSpace(host))
+            {
+                cfg.Host = host.Trim();
+            }
+
+            string portText = Environment.GetEnvironmentVariable("MARKTOGETHER_CLIENT_PORT");
+            if (int.TryParse(portText, out int port) && port > 0 && port <= 65535)
+            {
+                cfg.Port = port;
+            }
+
+            string thumb = Environment.GetEnvironmentVariable("MARKTOGETHER_CLIENT_CERT_THUMB");
+            if (thumb != null)
+            {
+                cfg.CertThumb = thumb.Trim();
+            }
         }
     }
 }
